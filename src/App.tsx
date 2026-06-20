@@ -61,6 +61,8 @@ import {
 } from 'recharts';
 import { Employee, ActiveTab } from './types';
 import { INITIAL_EMPLOYEES } from './data';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const MOCK_P3K_BLUD_ITEMS: Employee[] = [
   {
@@ -197,6 +199,106 @@ const MOCK_P3K_BLUD_ITEMS: Employee[] = [
   }
 ];
 
+const exportIdCardToPdf = async (elementId: string, filename: string) => {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  
+  try {
+    const canvas = await html2canvas(element, {
+      scale: 3,
+      useCORS: true,
+      backgroundColor: null,
+      logging: false,
+    });
+    
+    const imgData = canvas.toDataURL('image/png');
+    const imgWidth = canvas.width;
+    const imgHeight = canvas.height;
+    
+    const mmWidth = 85.6;
+    const mmHeight = (imgHeight / imgWidth) * mmWidth;
+    
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: [mmWidth, mmHeight]
+    });
+    
+    pdf.addImage(imgData, 'PNG', 0, 0, mmWidth, mmHeight);
+    pdf.save(filename);
+  } catch (error) {
+    console.error("Failed to export PDF:", error);
+  }
+};
+
+const printIdCard = async (elementId: string) => {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  
+  try {
+    const canvas = await html2canvas(element, {
+      scale: 3,
+      useCORS: true,
+      backgroundColor: null,
+      logging: false,
+    });
+    
+    const imgData = canvas.toDataURL('image/png');
+    
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) return;
+    
+    doc.open();
+    doc.write(`
+      <html>
+        <head>
+          <title>Cetak ID Card</title>
+          <style>
+            @page {
+              size: auto;
+              margin: 0;
+            }
+            body {
+              margin: 0;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              background-color: white;
+            }
+            img {
+              max-width: 100%;
+              max-height: 100%;
+              object-fit: contain;
+            }
+          </style>
+        </head>
+        <body>
+          <img src="\${imgData}" onload="window.print()" />
+          <script>
+            window.onafterprint = function() {
+              window.parent.document.body.removeChild(window.frameElement);
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    doc.close();
+  } catch (err) {
+    console.error("Print failed:", err);
+    window.print();
+  }
+};
+
 const AUGMENTED_DEFAULT_EMPLOYEES: Employee[] = [
   ...INITIAL_EMPLOYEES.map(emp => ({
     ...emp,
@@ -225,6 +327,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
+  const [pensionSearchTerm, setPensionSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
 
@@ -444,6 +547,51 @@ export default function App() {
   const criticalRetirements = useMemo(() => {
     return pensionEmployees.filter(e => e.yearsToRetire <= 3 && e.yearsToRetire >= -2);
   }, [pensionEmployees]);
+
+  // Direct search filter for pensions
+  const finalPensionEmployees = useMemo(() => {
+    if (!pensionSearchTerm.trim()) return pensionEmployees;
+    const term = pensionSearchTerm.toLowerCase();
+    return pensionEmployees.filter(emp => 
+      emp.nama.toLowerCase().includes(term) ||
+      emp.nip.includes(term) ||
+      emp.jabatanTerakhir.toLowerCase().includes(term) ||
+      emp.unitRuangan.toLowerCase().includes(term)
+    );
+  }, [pensionEmployees, pensionSearchTerm]);
+
+  // Pension stats counting specifically per personnel category
+  const pensionStats = useMemo(() => {
+    const allRetirements = employees.map(emp => {
+      let retirementAge = 58;
+      const isDoctor = emp.nama.toLowerCase().includes('dr.') || emp.nama.toLowerCase().includes('drg.');
+      const isNurseOrMidwife = emp.nama.toLowerCase().includes('ns.') || emp.pendidikanTerakhir.toLowerCase().includes('kebidanan') || emp.pendidikanTerakhir.toLowerCase().includes('keperawatan');
+      
+      if (isDoctor) {
+        retirementAge = emp.golongan.startsWith('IV') ? 65 : 60;
+      } else if (isNurseOrMidwife) {
+        retirementAge = 60;
+      }
+
+      const yearsToRetire = retirementAge - emp.usiaTahun;
+      return {
+        ...emp,
+        yearsToRetire
+      };
+    });
+
+    const total = allRetirements.filter(e => e.yearsToRetire <= 3 && e.yearsToRetire >= -2).length;
+    const countPNS = allRetirements.filter(e => (e.jenisKepegawaian || 'PNS') === 'PNS' && e.yearsToRetire <= 3 && e.yearsToRetire >= -2).length;
+    const countP3K = allRetirements.filter(e => e.jenisKepegawaian === 'P3K' && e.yearsToRetire <= 3 && e.yearsToRetire >= -2).length;
+    const countBLUD = allRetirements.filter(e => e.jenisKepegawaian === 'BLUD' && e.yearsToRetire <= 3 && e.yearsToRetire >= -2).length;
+
+    return {
+      total,
+      countPNS,
+      countP3K,
+      countBLUD
+    };
+  }, [employees]);
 
   // --- RECHARTS DATA FORMATTING ---
   const chartAgeData = useMemo(() => {
@@ -738,33 +886,96 @@ export default function App() {
         const currentMaxId = employees.length > 0 ? Math.max(...employees.map(emp => emp.id)) : 100;
         
         const mappedList: Employee[] = rawRows.map((row, idx) => {
+          // 1. Identify Kepegawaian type first so we can use it to drive specific column mappings
+          let jenisKepegawaian: Employee['jenisKepegawaian'] = 'PNS';
+          if (excelUploadTargetType !== 'AUTO') {
+            jenisKepegawaian = excelUploadTargetType;
+          } else {
+            const rawJenis = findValueByKeys(row, ["jenis", "tipe", "kategori"], "");
+            if (rawJenis.toUpperCase().includes('P3K') || rawJenis.toUpperCase().includes('PPPK')) {
+              jenisKepegawaian = 'P3K';
+            } else if (rawJenis.toUpperCase().includes('BLUD') || rawJenis.toLowerCase().includes('kontrak') || Object.keys(row).some(k => k.toLowerCase().includes('nrptt'))) {
+              jenisKepegawaian = 'BLUD';
+            } else {
+              jenisKepegawaian = 'PNS';
+            }
+          }
+
+          // 2. Identify Name and NIP / NRPTT
           const nama = findValueByKeys(row, ["nama", "name", "pegawai", "lengkap"]);
-          const nip = findValueByKeys(row, ["nip", "induk", "kontrak", "nipkontrak", "nomorinduk", "id"]);
+          const nip = findValueByKeys(row, ["nrptt", "nip", "induk", "kontrak", "nipkontrak", "nomorinduk", "id"]);
           
           if (!nama || !nip) {
             return null;
           }
 
-          const rawGender = findValueByKeys(row, ["gender", "kelamin", "jk", "sex", "lp"]);
+          // 3. Identify Gender
+          const rawGender = findValueByKeys(row, ["gender", "kelamin", "jk", "sex", "lp", "jenis kelamin", "l/p"]);
           let gender: 'L' | 'P' = 'L';
           if (rawGender.toUpperCase().startsWith('P') || rawGender.toLowerCase().includes('wanita') || rawGender.toLowerCase().includes('perempuan') || rawGender.toLowerCase().startsWith('w')) {
             gender = 'P';
           }
 
-          const tempatLahir = findValueByKeys(row, ["tempat", "lahir", "tempatahirkota"], "Tarakan");
+          // 4. Identify Tempat Lahir & Tanggal Lahir (with age recalculations)
+          const tempatLahir = findValueByKeys(row, ["tempat", "lahir", "tempatahirkota", "tempat lahir"], "Tarakan");
           
-          // Try to look for a key with "tanggal" or "tgl" or "date" or "birth"
           const tglKey = Object.keys(row).find(k => k.toLowerCase().includes('tanggal') || k.toLowerCase().includes('tgl') || k.toLowerCase().includes('birth') || k.toLowerCase().includes('lahir'));
           const rawTglLahir = tglKey ? row[tglKey] : '';
           const dateResult = parseExcelDate(rawTglLahir);
 
-          const golongan = findValueByKeys(row, ["golongan", "gol", "ruang", "golruang"], "III/a");
-          const pangkat = findValueByKeys(row, ["pangkat", "grade"], "Penata Muda");
-          const jabatanTerakhir = findValueByKeys(row, ["jabatan", "posisi"], "Dokter Pertama");
-          const rumpunJabatan = findValueByKeys(row, ["rumpun"], "Jabatan Fungsional Tertentu");
-          const pendidikanTerakhir = findValueByKeys(row, ["pendidikan"], "Kedokteran");
-          const tingkatPendidikanTerakhir = findValueByKeys(row, ["tingkat", "jenjang", "tingkat_pendidikan"], "S1");
-          const unitRuangan = findValueByKeys(row, ["unit", "ruangan", "ruang"], "Instalasi Gawat Darurat (IGD)");
+          // Get explicit age columns if they exist (e.g. "USIA TAHUN", "USIA BULAN" from image)
+          const rawUsiaTahun = findValueByKeys(row, ["usia tahun", "usia_tahun", "usia(tahun)", "usiatahun", "thn"]);
+          const rawUsiaBulan = findValueByKeys(row, ["usia bulan", "usia_bulan", "usia(bulan)", "usiabulan", "bln"]);
+          
+          let finalUsiaTahun = dateResult.ageY;
+          if (rawUsiaTahun) {
+            const parsedAge = parseInt(rawUsiaTahun.replace(/[^0-9]/g, ''), 10);
+            if (!isNaN(parsedAge)) {
+              finalUsiaTahun = parsedAge;
+            }
+          }
+          
+          let finalUsiaBulan = dateResult.ageM;
+          if (rawUsiaBulan) {
+            const parsedMonth = parseInt(rawUsiaBulan.replace(/[^0-9]/g, ''), 10);
+            if (!isNaN(parsedMonth)) {
+              finalUsiaBulan = parsedMonth;
+            }
+          }
+
+          // 5. Setup basic attributes with customized fallbacks for BLUD
+          const golongan = findValueByKeys(row, ["golongan", "gol", "ruang", "golruang"], jenisKepegawaian === 'BLUD' ? '-' : "III/a");
+          const pangkat = findValueByKeys(row, ["pangkat", "grade"], jenisKepegawaian === 'BLUD' ? 'Pegawai BLUD' : "Penata Muda");
+          const jabatanTerakhir = findValueByKeys(row, ["jabatan terakhir", "jabatan", "posisi"], jenisKepegawaian === 'BLUD' ? 'Tenaga Medis / Keperawatan BLUD' : "Dokter Pertama");
+          const rumpunJabatan = findValueByKeys(row, ["rumpun", "rumpunjabatan"], jenisKepegawaian === 'BLUD' ? 'Tenaga Kontrak BLUD' : "Jabatan Fungsional Tertentu");
+          
+          // 6. Support automatic inference of educational backgrounds based on title
+          let pendidikanTerakhir = findValueByKeys(row, ["pendidikan", "jurusan", "studi"], "");
+          let tingkatPendidikanTerakhir = findValueByKeys(row, ["tingkat", "jenjang", "tingkat_pendidikan", "tingkatpendidikan"], "");
+
+          if (!pendidikanTerakhir || !tingkatPendidikanTerakhir) {
+            const nameLower = nama.toLowerCase();
+            const jabLower = jabatanTerakhir.toLowerCase();
+            
+            if (nameLower.includes('sp.') || nameLower.includes('spesialis') || jabLower.includes('spesialis')) {
+              if (!pendidikanTerakhir) pendidikanTerakhir = 'Kedokteran Spesialis';
+              if (!tingkatPendidikanTerakhir) tingkatPendidikanTerakhir = 'Sp-1';
+            } else if (nameLower.includes('dr.') || nameLower.includes('drg.') || nameLower.includes('dokter') || jabLower.includes('dokter')) {
+              if (!pendidikanTerakhir) pendidikanTerakhir = 'Kedokteran';
+              if (!tingkatPendidikanTerakhir) tingkatPendidikanTerakhir = 'S1 Profesi';
+            } else if (nameLower.includes('s.kep') || nameLower.includes('ns.') || nameLower.includes('ners') || jabLower.includes('perawat')) {
+              if (!pendidikanTerakhir) pendidikanTerakhir = 'Keperawatan';
+              if (!tingkatPendidikanTerakhir) tingkatPendidikanTerakhir = 'S1 Profesi';
+            } else if (nameLower.includes('a.md.kep') || nameLower.includes('a.md.keb') || nameLower.includes('amd.')) {
+              if (!pendidikanTerakhir) pendidikanTerakhir = nameLower.includes('keb') || jabLower.includes('bidan') ? 'Kebidanan' : 'Keperawatan';
+              if (!tingkatPendidikanTerakhir) tingkatPendidikanTerakhir = 'D3';
+            } else {
+              if (!pendidikanTerakhir) pendidikanTerakhir = jenisKepegawaian === 'BLUD' ? 'Kesehatan / Umum' : 'Kedokteran';
+              if (!tingkatPendidikanTerakhir) tingkatPendidikanTerakhir = 'S1';
+            }
+          }
+
+          const unitRuangan = findValueByKeys(row, ["unit", "ruangan", "ruang", "unitruangan", "unit kerja", "unitkerja"], "Instalasi Gawat Darurat (IGD)");
           const bidang = findValueByKeys(row, ["bidang", "dept", "bagian"], "Bidang Pelayanan Medik");
           
           const rawStatus = findValueByKeys(row, ["status"], "Aktif");
@@ -773,20 +984,19 @@ export default function App() {
           else if (rawStatus.toLowerCase().includes('belajar')) statusKepegawaian = 'Tugas Belajar';
           else if (rawStatus.toLowerCase().includes('tidak')) statusKepegawaian = 'Tidak Aktif Sementara';
 
-          let jenisKepegawaian: Employee['jenisKepegawaian'] = 'PNS';
-          if (excelUploadTargetType !== 'AUTO') {
-            jenisKepegawaian = excelUploadTargetType;
-          } else {
-            const rawJenis = findValueByKeys(row, ["jenis", "tipe", "kategori"], "PNS");
-            if (rawJenis.toUpperCase().includes('P3K') || rawJenis.toUpperCase().includes('PPPK')) {
-              jenisKepegawaian = 'P3K';
-            } else if (rawJenis.toUpperCase().includes('BLUD') || rawJenis.toLowerCase().includes('kontrak')) {
-              jenisKepegawaian = 'BLUD';
+          // 7. Parse TMT / TAHUN PENGANGKATAN
+          const rawTmt = findValueByKeys(row, ["tmt", "cpns", "pengangkatan", "tahun pengangkatan", "tahunpengangkatan"], "01/01/2020");
+          let formattedTmt = "01/01/2020";
+          if (rawTmt) {
+            const parsedTmt = parseExcelDate(rawTmt);
+            if (parsedTmt && parsedTmt.dateStr !== '01/01/1990') {
+               formattedTmt = parsedTmt.dateStr;
+            } else {
+               formattedTmt = rawTmt;
             }
           }
 
           const keterangan = findValueByKeys(row, ["keterangan", "ket", "notes"], "-");
-          const tmtCpns = findValueByKeys(row, ["tmt", "cpns"], "01/01/2020");
 
           return {
             id: currentMaxId + 1 + idx,
@@ -795,9 +1005,9 @@ export default function App() {
             gender,
             tempatLahir,
             tanggalLahir: dateResult.dateStr,
-            usiaTahun: dateResult.ageY,
-            usiaBulan: dateResult.ageM,
-            tmtCpns,
+            usiaTahun: finalUsiaTahun,
+            usiaBulan: finalUsiaBulan,
+            tmtCpns: formattedTmt,
             golongan,
             pangkat,
             jabatanTerakhir,
@@ -1134,7 +1344,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* --- NAVIGATION SIDEBAR --- */}
-      <aside className="no-print w-64 bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800 shrink-0">
+      <aside className="no-print w-56 md:w-[230px] bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800 shrink-0">
         <div className="p-6 flex items-center gap-3">
           <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white text-xl">H</div>
           <div>
@@ -1206,7 +1416,7 @@ export default function App() {
       {/* --- MAIN VIEW --- */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0">
+        <header className="h-20 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-slate-800">
               {activeTab === 'dashboard' ? 'Ringkasan Kepegawaian' : 
@@ -1254,7 +1464,7 @@ export default function App() {
         </header>
 
         {/* Content Container */}
-        <div className="p-8 flex-1 overflow-y-auto flex flex-col gap-6">
+        <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-6">
           {/* TAB 1: DASHBOARD ANALITIK */}
           {activeTab === 'dashboard' && (
           <div className="flex flex-col gap-6 flex-1 overflow-y-auto">
@@ -1524,26 +1734,27 @@ export default function App() {
                     }
                   }}
                   onClick={() => setSelectedFolderType('ALL')}
-                  className={`flex items-center gap-4 p-4 pb-11 rounded-2xl border transition-all text-left relative overflow-hidden cursor-pointer select-none outline-hidden ${
+                  className={`flex flex-col justify-between p-3.5 rounded-2xl border transition-all text-left relative cursor-pointer select-none outline-hidden min-h-[110px] ${
                     selectedFolderType === 'ALL'
                       ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-300'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                   }`}
                 >
-                  <div className={`p-2.5 rounded-xl ${selectedFolderType === 'ALL' ? 'bg-slate-850 text-slate-200' : 'bg-slate-200/60 text-slate-600'}`}>
-                    {selectedFolderType === 'ALL' ? <Folders className="w-5 h-5 animate-pulse" /> : <Folder className="w-5 h-5" />}
+                  <div className="flex items-center justify-between w-full">
+                    <div className={`p-1.5 rounded-lg ${selectedFolderType === 'ALL' ? 'bg-slate-800 text-slate-200' : 'bg-slate-200/60 text-slate-650'}`}>
+                      {selectedFolderType === 'ALL' ? <Folders className="w-4 h-4 animate-pulse" /> : <Folder className="w-4 h-4" />}
+                    </div>
+                    <span className={`font-mono text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                      selectedFolderType === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {stats.total}
+                    </span>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-black tracking-tight uppercase leading-none">Semua Berkas</h4>
-                    <p className="text-[10px] mt-1 opacity-70">Seluruh Pegawai</p>
+                  <div className="mt-2.5">
+                    <h4 className="text-[11px] font-black tracking-tight uppercase leading-none truncate">Semua Berkas</h4>
+                    <p className="text-[9px] mt-1 opacity-70 truncate">Seluruh Pegawai</p>
                   </div>
-                  <span className={`absolute right-3 top-3 font-mono text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    selectedFolderType === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                  }`}>
-                    {stats.total}
-                  </span>
-                  
-                  <div className="absolute bottom-2 right-2 z-20">
+                  <div className="mt-2 flex justify-end">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1551,7 +1762,7 @@ export default function App() {
                         setExcelUploadTargetType('AUTO');
                         setIsExcelModalOpen(true);
                       }}
-                      className={`py-1 px-2.5 rounded-xl border transition-all flex items-center gap-1 hover:scale-105 active:scale-95 text-[9px] font-extrabold shadow-xs cursor-pointer ${
+                      className={`py-0.5 px-2 rounded-lg border transition-all flex items-center gap-1 hover:scale-105 active:scale-95 text-[9px] font-bold shadow-xs cursor-pointer ${
                         selectedFolderType === 'ALL'
                           ? 'bg-white text-slate-900 border-white hover:bg-slate-100'
                           : 'bg-slate-800 text-white border-slate-700 hover:bg-slate-900'
@@ -1574,26 +1785,27 @@ export default function App() {
                     }
                   }}
                   onClick={() => setSelectedFolderType('PNS')}
-                  className={`flex items-center gap-4 p-4 pb-11 rounded-2xl border transition-all text-left relative overflow-hidden cursor-pointer select-none outline-hidden ${
+                  className={`flex flex-col justify-between p-3.5 rounded-2xl border transition-all text-left relative cursor-pointer select-none outline-hidden min-h-[110px] ${
                     selectedFolderType === 'PNS'
                       ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-300'
                       : 'bg-blue-50/40 text-blue-900 border-blue-100 hover:bg-blue-50/80'
                   }`}
                 >
-                  <div className={`p-2.5 rounded-xl ${selectedFolderType === 'PNS' ? 'bg-blue-800 text-blue-100' : 'bg-blue-100 text-blue-650'}`}>
-                    {selectedFolderType === 'PNS' ? <FolderOpen className="w-5 h-5" /> : <Folder className="w-5 h-5" />}
+                  <div className="flex items-center justify-between w-full">
+                    <div className={`p-1.5 rounded-lg ${selectedFolderType === 'PNS' ? 'bg-blue-800 text-blue-100' : 'bg-blue-100 text-blue-650'}`}>
+                      {selectedFolderType === 'PNS' ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
+                    </div>
+                    <span className={`font-mono text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                      selectedFolderType === 'PNS' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-850'
+                    }`}>
+                      {stats.countPNS}
+                    </span>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-black tracking-tight uppercase leading-none">Berkas PNS</h4>
-                    <p className="text-[10px] mt-1 opacity-70">Negeri Sipil</p>
+                  <div className="mt-2.5">
+                    <h4 className="text-[11px] font-black tracking-tight uppercase leading-none truncate">Berkas PNS</h4>
+                    <p className="text-[9px] mt-1 opacity-70 truncate">Negeri Sipil</p>
                   </div>
-                  <span className={`absolute right-3 top-3 font-mono text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    selectedFolderType === 'PNS' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'
-                  }`}>
-                    {stats.countPNS}
-                  </span>
-
-                  <div className="absolute bottom-2 right-2 z-20">
+                  <div className="mt-2 flex justify-end">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1601,7 +1813,7 @@ export default function App() {
                         setExcelUploadTargetType('PNS');
                         setIsExcelModalOpen(true);
                       }}
-                      className={`py-1 px-2.5 rounded-xl border transition-all flex items-center gap-1 hover:scale-105 active:scale-95 text-[9px] font-extrabold shadow-xs cursor-pointer ${
+                      className={`py-0.5 px-2 rounded-lg border transition-all flex items-center gap-1 hover:scale-105 active:scale-95 text-[9px] font-bold shadow-xs cursor-pointer ${
                         selectedFolderType === 'PNS'
                           ? 'bg-white text-blue-700 border-white hover:bg-slate-150'
                           : 'bg-blue-600 text-white border-blue-650 hover:bg-blue-700'
@@ -1624,26 +1836,27 @@ export default function App() {
                     }
                   }}
                   onClick={() => setSelectedFolderType('P3K')}
-                  className={`flex items-center gap-4 p-4 pb-11 rounded-2xl border transition-all text-left relative overflow-hidden cursor-pointer select-none outline-hidden ${
+                  className={`flex flex-col justify-between p-3.5 rounded-2xl border transition-all text-left relative cursor-pointer select-none outline-hidden min-h-[110px] ${
                     selectedFolderType === 'P3K'
                       ? 'bg-amber-600 text-white border-amber-600 shadow-md ring-2 ring-amber-300'
                       : 'bg-amber-50/40 text-amber-900 border-amber-100 hover:bg-amber-50/80'
                   }`}
                 >
-                  <div className={`p-2.5 rounded-xl ${selectedFolderType === 'P3K' ? 'bg-amber-800 text-amber-100' : 'bg-amber-100 text-amber-650'}`}>
-                    {selectedFolderType === 'P3K' ? <FolderOpen className="w-5 h-5" /> : <Folder className="w-5 h-5" />}
+                  <div className="flex items-center justify-between w-full">
+                    <div className={`p-1.5 rounded-lg ${selectedFolderType === 'P3K' ? 'bg-amber-800 text-amber-100' : 'bg-amber-100 text-amber-650'}`}>
+                      {selectedFolderType === 'P3K' ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
+                    </div>
+                    <span className={`font-mono text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                      selectedFolderType === 'P3K' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-850'
+                    }`}>
+                      {stats.countP3K}
+                    </span>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-black tracking-tight uppercase leading-none">Berkas P3K</h4>
-                    <p className="text-[10px] mt-1 opacity-70">Perjanjian Kerja</p>
+                  <div className="mt-2.5">
+                    <h4 className="text-[11px] font-black tracking-tight uppercase leading-none truncate">Berkas P3K</h4>
+                    <p className="text-[9px] mt-1 opacity-70 truncate">Perjanjian Kerja</p>
                   </div>
-                  <span className={`absolute right-3 top-3 font-mono text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    selectedFolderType === 'P3K' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
-                  }`}>
-                    {stats.countP3K}
-                  </span>
-
-                  <div className="absolute bottom-2 right-2 z-20">
+                  <div className="mt-2 flex justify-end">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1651,7 +1864,7 @@ export default function App() {
                         setExcelUploadTargetType('P3K');
                         setIsExcelModalOpen(true);
                       }}
-                      className={`py-1 px-2.5 rounded-xl border transition-all flex items-center gap-1 hover:scale-105 active:scale-95 text-[9px] font-extrabold shadow-xs cursor-pointer ${
+                      className={`py-0.5 px-2 rounded-lg border transition-all flex items-center gap-1 hover:scale-105 active:scale-95 text-[9px] font-bold shadow-xs cursor-pointer ${
                         selectedFolderType === 'P3K'
                           ? 'bg-white text-amber-700 border-white hover:bg-slate-150'
                           : 'bg-amber-600 text-white border-amber-650 hover:bg-amber-700'
@@ -1674,26 +1887,27 @@ export default function App() {
                     }
                   }}
                   onClick={() => setSelectedFolderType('BLUD')}
-                  className={`flex items-center gap-4 p-4 pb-11 rounded-2xl border transition-all text-left relative overflow-hidden cursor-pointer select-none outline-hidden ${
+                  className={`flex flex-col justify-between p-3.5 rounded-2xl border transition-all text-left relative cursor-pointer select-none outline-hidden min-h-[110px] ${
                     selectedFolderType === 'BLUD'
                       ? 'bg-emerald-600 text-white border-emerald-600 shadow-md ring-2 ring-emerald-350'
                       : 'bg-emerald-50/40 text-emerald-950 border-emerald-100 hover:bg-emerald-50/80'
                   }`}
                 >
-                  <div className={`p-2.5 rounded-xl ${selectedFolderType === 'BLUD' ? 'bg-emerald-800 text-emerald-100' : 'bg-emerald-100 text-emerald-650'}`}>
-                    {selectedFolderType === 'BLUD' ? <FolderOpen className="w-5 h-5" /> : <Folder className="w-5 h-5" />}
+                  <div className="flex items-center justify-between w-full">
+                    <div className={`p-1.5 rounded-lg ${selectedFolderType === 'BLUD' ? 'bg-emerald-800 text-emerald-100' : 'bg-emerald-100 text-emerald-650'}`}>
+                      {selectedFolderType === 'BLUD' ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
+                    </div>
+                    <span className={`font-mono text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                      selectedFolderType === 'BLUD' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-850'
+                    }`}>
+                      {stats.countBLUD}
+                    </span>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-black tracking-tight uppercase leading-none">Berkas BLUD</h4>
-                    <p className="text-[10px] mt-1 opacity-70">Layanan Daerah</p>
+                  <div className="mt-2.5">
+                    <h4 className="text-[11px] font-black tracking-tight uppercase leading-none truncate">Berkas BLUD</h4>
+                    <p className="text-[9px] mt-1 opacity-70 truncate">Layanan Daerah</p>
                   </div>
-                  <span className={`absolute right-3 top-3 font-mono text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    selectedFolderType === 'BLUD' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-850'
-                  }`}>
-                    {stats.countBLUD}
-                  </span>
-
-                  <div className="absolute bottom-2 right-2 z-20">
+                  <div className="mt-2 flex justify-end">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1701,7 +1915,7 @@ export default function App() {
                         setExcelUploadTargetType('BLUD');
                         setIsExcelModalOpen(true);
                       }}
-                      className={`py-1 px-2.5 rounded-xl border transition-all flex items-center gap-1 hover:scale-105 active:scale-95 text-[9px] font-extrabold shadow-xs cursor-pointer ${
+                      className={`py-0.5 px-2 rounded-lg border transition-all flex items-center gap-1 hover:scale-105 active:scale-95 text-[9px] font-bold shadow-xs cursor-pointer ${
                         selectedFolderType === 'BLUD'
                           ? 'bg-white text-emerald-700 border-white hover:bg-slate-150'
                           : 'bg-emerald-600 text-white border-emerald-650 hover:bg-emerald-700'
@@ -1809,7 +2023,9 @@ export default function App() {
                         />
                       </th>
                       <th className="py-3 px-3">Pegawai</th>
-                      <th className="py-3 px-2">NIP / Gol</th>
+                      <th className="py-3 px-2">
+                        {selectedFolderType === 'BLUD' ? 'NRPTT / Gol' : 'NIP / Gol'}
+                      </th>
                       <th className="py-3 px-2">Jabatan Terakhir</th>
                       <th className="py-3 px-2">Unit / Bidang</th>
                       <th className="py-3 px-2">Status</th>
@@ -1942,7 +2158,7 @@ export default function App() {
 
             {/* SIDE PROFILE DRAWER PANEL */}
             {selectedEmployee && (
-              <div className="w-full lg:w-96 bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col justify-between shrink-0">
+              <div className="w-full lg:w-[310px] bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs flex flex-col justify-between shrink-0">
                 <div className="flex flex-col gap-4">
                   <div className="flex justify-between items-center pb-3 border-b border-slate-100">
                     <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Detil Pegawai Aktif</span>
@@ -1965,7 +2181,9 @@ export default function App() {
                       </div>
                       <div className="min-w-0">
                         <h4 className="font-extrabold text-[13px] tracking-tight truncate leading-tight">{selectedEmployee.nama}</h4>
-                        <p className="font-mono text-[9px] text-blue-100">{selectedEmployee.nip}</p>
+                        <p className="font-mono text-[9px] text-blue-100">
+                          {selectedEmployee.jenisKepegawaian === 'BLUD' ? 'NRPTT' : 'NIP'}: {selectedEmployee.nip}
+                        </p>
                         <p className="text-[10px] font-semibold text-blue-200 mt-1 truncate">{selectedEmployee.jabatanTerakhir}</p>
                       </div>
                     </div>
@@ -2058,19 +2276,176 @@ export default function App() {
               </p>
             </div>
 
-            {/* RETIREMENTS LIST GRID */}
-            <div id="card-pension-calculator" className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex-1 flex flex-col">
-              <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4">
-                <span className="text-xs font-extrabold text-slate-800">Daftar Pegawai Mendekati Masa Pensiun</span>
-                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded-md flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  Kritis (&lt; 3 Tahun): {criticalRetirements.length} Pegawai
-                </span>
+            {/* VISUAL FOLDERS SEPARATORS (PNS, P3K, BLUD) FOR PENSION ACTIVE WORK DIRECTORY */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p-0.5">
+              {/* Folder ALL */}
+              <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    setSelectedFolderType('ALL');
+                  }
+                }}
+                onClick={() => setSelectedFolderType('ALL')}
+                className={`flex flex-col justify-between p-3.5 rounded-2xl border transition-all text-left relative cursor-pointer select-none outline-hidden min-h-[110px] ${
+                  selectedFolderType === 'ALL'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-300'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className={`p-1.5 rounded-lg ${selectedFolderType === 'ALL' ? 'bg-slate-800 text-slate-200' : 'bg-slate-200/60 text-slate-655'}`}>
+                    {selectedFolderType === 'ALL' ? <Folders className="w-4 h-4 animate-pulse" /> : <Folder className="w-4 h-4" />}
+                  </div>
+                  <span className={`font-mono text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                    selectedFolderType === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {stats.total}
+                  </span>
+                </div>
+                <div className="mt-2.5">
+                  <h4 className="text-[11px] font-black tracking-tight uppercase leading-none truncate">Semua Berkas</h4>
+                  <p className="text-[9px] mt-1 opacity-70 truncate font-semibold">Pensiun Kritis: {pensionStats.total}</p>
+                </div>
+              </div>
+
+              {/* Folder PNS */}
+              <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    setSelectedFolderType('PNS');
+                  }
+                }}
+                onClick={() => setSelectedFolderType('PNS')}
+                className={`flex flex-col justify-between p-3.5 rounded-2xl border transition-all text-left relative cursor-pointer select-none outline-hidden min-h-[110px] ${
+                  selectedFolderType === 'PNS'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-300'
+                    : 'bg-blue-50/40 text-blue-900 border-blue-100 hover:bg-blue-50/80'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className={`p-1.5 rounded-lg ${selectedFolderType === 'PNS' ? 'bg-blue-800 text-blue-100' : 'bg-blue-100 text-blue-650'}`}>
+                    {selectedFolderType === 'PNS' ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
+                  </div>
+                  <span className={`font-mono text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                    selectedFolderType === 'PNS' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-850'
+                  }`}>
+                    {stats.countPNS}
+                  </span>
+                </div>
+                <div className="mt-2.5">
+                  <h4 className="text-[11px] font-black tracking-tight uppercase leading-none truncate">Berkas PNS</h4>
+                  <p className="text-[9px] mt-1 opacity-70 truncate font-semibold">Pensiun Kritis: {pensionStats.countPNS}</p>
+                </div>
+              </div>
+
+              {/* Folder P3K */}
+              <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    setSelectedFolderType('P3K');
+                  }
+                }}
+                onClick={() => setSelectedFolderType('P3K')}
+                className={`flex flex-col justify-between p-3.5 rounded-2xl border transition-all text-left relative cursor-pointer select-none outline-hidden min-h-[110px] ${
+                  selectedFolderType === 'P3K'
+                    ? 'bg-amber-600 text-white border-amber-600 shadow-md ring-2 ring-amber-300'
+                    : 'bg-amber-50/40 text-amber-900 border-amber-100 hover:bg-amber-50/80'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className={`p-1.5 rounded-lg ${selectedFolderType === 'P3K' ? 'bg-amber-800 text-amber-100' : 'bg-amber-100 text-amber-650'}`}>
+                    {selectedFolderType === 'P3K' ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
+                  </div>
+                  <span className={`font-mono text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                    selectedFolderType === 'P3K' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-850'
+                  }`}>
+                    {stats.countP3K}
+                  </span>
+                </div>
+                <div className="mt-2.5">
+                  <h4 className="text-[11px] font-black tracking-tight uppercase leading-none truncate">Berkas P3K</h4>
+                  <p className="text-[9px] mt-1 opacity-70 truncate font-semibold">Pensiun Kritis: {pensionStats.countP3K}</p>
+                </div>
+              </div>
+
+              {/* Folder BLUD */}
+              <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    setSelectedFolderType('BLUD');
+                  }
+                }}
+                onClick={() => setSelectedFolderType('BLUD')}
+                className={`flex flex-col justify-between p-3.5 rounded-2xl border transition-all text-left relative cursor-pointer select-none outline-hidden min-h-[110px] ${
+                  selectedFolderType === 'BLUD'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-md ring-2 ring-emerald-350'
+                    : 'bg-emerald-50/40 text-emerald-950 border-emerald-100 hover:bg-emerald-50/80'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className={`p-1.5 rounded-lg ${selectedFolderType === 'BLUD' ? 'bg-emerald-800 text-emerald-100' : 'bg-emerald-100 text-emerald-650'}`}>
+                    {selectedFolderType === 'BLUD' ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
+                  </div>
+                  <span className={`font-mono text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                    selectedFolderType === 'BLUD' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-850'
+                  }`}>
+                    {stats.countBLUD}
+                  </span>
+                </div>
+                <div className="mt-2.5">
+                  <h4 className="text-[11px] font-black tracking-tight uppercase leading-none truncate">Berkas BLUD</h4>
+                  <p className="text-[9px] mt-1 opacity-70 truncate font-semibold">Pensiun Kritis: {pensionStats.countBLUD}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* RETIREMENTS WRAPPER FLEX CONTAINER */}
+            <div className="flex flex-col xl:flex-row gap-6 items-start w-full">
+              {/* RETIREMENTS LIST GRID */}
+              <div id="card-pension-calculator" className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex-1 flex flex-col w-full">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100 mb-4">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-extrabold text-slate-800">Daftar Pegawai Mendekati Masa Pensiun</span>
+                  <p className="text-[10px] text-slate-400">Data terintegrasi dan tersinkronisasi otomatis</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {/* Search Input for Pension */}
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Cari nama, nip, fungsional..."
+                      value={pensionSearchTerm}
+                      onChange={(e) => setPensionSearchTerm(e.target.value)}
+                      className="w-48 sm:w-56 bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 rounded-xl pl-8 pr-7 py-1.5 text-[11px] text-slate-700 outline-hidden transition-all placeholder:text-slate-400"
+                    />
+                    {pensionSearchTerm && (
+                      <button
+                        onClick={() => setPensionSearchTerm('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-[10px] w-4 h-4 flex items-center justify-center rounded-full hover:bg-slate-200 transition-colors"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    Kritis (&lt; 3 Tahun): {criticalRetirements.length} Pegawai
+                  </span>
+                </div>
               </div>
 
               <div className="overflow-x-auto flex-1 flex flex-col justify-start min-h-[350px]">
                 <AnimatePresence mode="wait">
-                  {pensionEmployees.length > 0 ? (
+                  {finalPensionEmployees.length > 0 ? (
                     <motion.div
                       key="pension-table"
                       initial={{ opacity: 0, y: 10 }}
@@ -2105,16 +2480,19 @@ export default function App() {
                           initial="hidden"
                           animate="show"
                         >
-                          {pensionEmployees.slice(0, 10).map((emp) => {
+                          {finalPensionEmployees.slice(0, 15).map((emp) => {
                             const isCritical = emp.yearsToRetire <= 3;
                             return (
                               <motion.tr 
                                 key={emp.id} 
+                                onClick={() => setSelectedEmpId(emp.id)}
                                 variants={{
                                   hidden: { opacity: 0, y: 15 },
                                   show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } }
                                 }}
-                                className={`hover:bg-slate-50/50 transition ${isCritical ? 'bg-amber-50/20' : ''}`}
+                                className={`cursor-pointer hover:bg-slate-100/75 hover:-translate-y-[2px] hover:shadow-xs transition-all duration-300 transform-gpu ${
+                                  selectedEmpId === emp.id ? 'bg-blue-50/70 border-l-4 border-l-blue-600' : isCritical ? 'bg-amber-50/20' : ''
+                                }`}
                               >
                                 <td className="py-4 px-3">
                                   <div className="flex items-center gap-3">
@@ -2123,7 +2501,9 @@ export default function App() {
                                     </div>
                                     <div>
                                       <p className="font-bold text-slate-800 leading-tight">{emp.nama}</p>
-                                      <p className="text-[10px] font-mono text-slate-450 mt-0.5">NIP: {emp.nip}</p>
+                                      <p className="text-[10px] font-mono text-slate-450 mt-0.5">
+                                        {emp.jenisKepegawaian === 'BLUD' ? 'NRPTT' : 'NIP'}: {emp.nip}
+                                      </p>
                                     </div>
                                   </div>
                                 </td>
@@ -2196,8 +2576,103 @@ export default function App() {
                 </AnimatePresence>
               </div>
             </div>
+
+            {/* RETIREE ID CARD VIEW FOR HIGH QUALITY EXPORT AND PRINT */}
+            {selectedEmployee && (
+              <div className="w-full xl:w-85 bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col shrink-0 items-center">
+                <div className="w-full pb-3 border-b border-slate-100 mb-4 flex justify-between items-center">
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight font-display">ID Card Preview</h4>
+                    <p className="text-[9px] text-slate-400 font-semibold truncate max-w-[155px]">{selectedEmployee.nama}</p>
+                  </div>
+                  <span className="text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded font-mono">BUP {selectedEmployee.retirementAge} Th</span>
+                </div>
+
+                <div className="w-full flex justify-center py-2">
+                  {/* The Visual Printable/Exportable ID card */}
+                  <div id="pension-id-card-view" className="print-card w-72 bg-white rounded-3xl shadow-lg overflow-hidden border border-slate-200 flex flex-col select-none relative">
+                    {/* Top Header card */}
+                    <div className="bg-gradient-to-r from-blue-700 to-indigo-850 p-4.5 text-white text-center pb-8">
+                      <p className="text-[9px] font-extrabold uppercase tracking-widest leading-none text-blue-100">KARTU IDENTITAS KELUARGA</p>
+                      <h3 className="text-sm font-extrabold tracking-tight mt-1 font-display leading-tight">RSUD DR. H. JUSUF SK</h3>
+                      <p className="text-[7.5px] text-blue-200 mt-1">Provinsi Kalimantan Utara</p>
+                    </div>
+
+                    {/* Photo Space overlapping */}
+                    <div className="flex flex-col items-center -mt-6 z-10 px-5">
+                      <div className="w-20 h-20 bg-white rounded-2xl shadow-md p-1 border border-slate-100 flex items-center justify-center font-display">
+                        <div className="w-full h-full bg-slate-900 rounded-xl text-blue-400 font-black flex items-center justify-center text-3xl uppercase">
+                          {selectedEmployee.nama.replace('dr.', '').replace('Ns.', '').slice(0, 2).trim().toUpperCase()}
+                        </div>
+                      </div>
+
+                      <h4 className="font-extrabold text-xs text-slate-850 tracking-tight mt-2.5 text-center leading-tight">
+                        {selectedEmployee.nama}
+                      </h4>
+                      <p className="font-mono text-[9px] text-slate-450 mt-1">
+                        {selectedEmployee.jenisKepegawaian === 'BLUD' ? 'NRPTT' : 'NIP'}: {selectedEmployee.nip}
+                      </p>
+                      
+                      <span className="inline-block mt-2 px-2.5 py-0.5 bg-blue-50 border border-blue-200 rounded-full text-[8.5px] font-extrabold text-blue-800 font-display">
+                        {selectedEmployee.jabatanTerakhir}
+                      </span>
+                    </div>
+
+                    {/* Detail fields */}
+                    <div className="p-4 flex flex-col gap-1.5 mt-3 text-[9.5px] text-slate-600 font-semibold border-t border-slate-100 bg-slate-50">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Grup Bidang:</span>
+                        <strong className="text-slate-800">{selectedEmployee.bidang}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Unit Penempatan:</span>
+                        <strong className="text-slate-800">{selectedEmployee.unitRuangan}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Struktur/BUP:</span>
+                        <strong className="text-slate-800">{selectedEmployee.jenisKepegawaian} (BUP {selectedEmployee.retirementAge} Th)</strong>
+                      </div>
+                    </div>
+
+                    {/* Bottom Footer block bar code sim */}
+                    <div className="bg-slate-900 py-2.5 px-4 flex justify-between items-center text-[7.5px] font-mono text-slate-500 text-center uppercase tracking-widest border-t border-slate-800">
+                      <div>
+                        <span>STATUS: {selectedEmployee.statusKepegawaian}</span>
+                      </div>
+                      {/* Fake Barcode */}
+                      <div className="flex gap-[1px] items-center py-0.5 justify-end w-12 shrink-0 bg-white p-0.5 rounded-xs">
+                        <span className="w-[1px] h-2.5 bg-black"></span>
+                        <span className="w-[2px] h-2.5 bg-black"></span>
+                        <span className="w-[1px] h-2.5 bg-black"></span>
+                        <span className="w-[2px] h-2.5 bg-black"></span>
+                        <span className="w-[1px] h-2.5 bg-black"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions under the ID card */}
+                <div className="w-full flex flex-col gap-2 mt-4">
+                  <button
+                    onClick={() => exportIdCardToPdf('pension-id-card-view', `ID_Card_Pensiun_${selectedEmployee.nama.replace(/\s+/g, '_')}.pdf`)}
+                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 transition text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Ekspor PDF ID Card</span>
+                  </button>
+                  <button
+                    onClick={() => printIdCard('pension-id-card-view')}
+                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 transition text-slate-700 border border-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4 text-slate-500" />
+                    <span>Cetak ID Card</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+      )}
 
         {/* TAB 4: BADGE GENERATOR (CETAK KARTU PEGAWAI) */}
         {activeTab === 'badge' && (
@@ -2226,20 +2701,42 @@ export default function App() {
                 Kami mensimulasikan cetak ID Card fungsional dengan foto inisial otomatis, kode QR kedinasan, logo RSUD, dan verifikasi NIP asli.
               </div>
 
-              <button
-                onClick={() => window.print()}
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 transition text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Cetak Lembar Kartu (Ctrl+P)</span>
-              </button>
+              <div className="flex flex-col gap-2 w-full mt-2">
+                <button
+                  onClick={() => window.print()}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 transition text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Cetak Lembar Kartu (Ctrl+P)</span>
+                </button>
+                
+                {selectedEmployee && (
+                  <>
+                    <button
+                      onClick={() => exportIdCardToPdf('badge-id-card-view', `ID_Card_${selectedEmployee.nama.replace(/\s+/g, '_')}.pdf`)}
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 transition text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Unduh PDF ID Card</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => printIdCard('badge-id-card-view')}
+                      className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 transition text-slate-700 border border-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4 text-slate-500" />
+                      <span>Cetak ID Card Spesifik</span>
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* PRINT COMPONENT PREVIEW */}
             {selectedEmployee && (
               <div className="flex-1 flex items-center justify-center p-6 bg-slate-100 rounded-2xl border border-dashed border-slate-300">
                 {/* Visual badge card */}
-                <div className="print-card w-80 bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 flex flex-col select-none relative">
+                <div id="badge-id-card-view" className="print-card w-80 bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 flex flex-col select-none relative">
                   
                   {/* Top Header card */}
                   <div className="bg-gradient-to-r from-blue-700 to-indigo-800 p-5 text-white text-center pb-8 sticky top-0">
@@ -2259,7 +2756,9 @@ export default function App() {
                     <h4 className="font-extrabold text-[15px] text-slate-850 tracking-tight mt-3 text-center leading-tight">
                       {selectedEmployee.nama}
                     </h4>
-                    <p className="font-mono text-[10px] text-slate-450 mt-1">NIP: {selectedEmployee.nip}</p>
+                    <p className="font-mono text-[10px] text-slate-450 mt-1">
+                      {selectedEmployee.jenisKepegawaian === 'BLUD' ? 'NRPTT' : 'NIP'}: {selectedEmployee.nip}
+                    </p>
                     
                     <span className="inline-block mt-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full text-[9px] font-extrabold text-blue-850 font-display">
                       {selectedEmployee.jabatanTerakhir}
@@ -2454,11 +2953,13 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-500 mb-1">N.I.P / No. Kontrak</label>
+                  <label className="block font-bold text-slate-500 mb-1">
+                    {(newEmp.jenisKepegawaian || 'PNS') === 'BLUD' ? 'NRPTT (No. Registrasi Tenaga Kontrak)' : 'N.I.P / No. Kontrak'}
+                  </label>
                   <input
                     type="text"
                     required
-                    placeholder="Contoh: 198006112009032002 atau BLUD-2021003"
+                    placeholder={(newEmp.jenisKepegawaian || 'PNS') === 'BLUD' ? 'Contoh: BLUD-2021003' : 'Contoh: 198006112009032002 atau BLUD-2021003'}
                     value={newEmp.nip}
                     onChange={(e) => setNewEmp(prev => ({ ...prev, nip: e.target.value }))}
                     className="w-full bg-slate-55 border border-slate-200 rounded-xl py-2 px-3 focus:outline-blue-500 font-mono font-semibold"
@@ -2673,11 +3174,13 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-500 mb-1">N.I.P (18 Angka)</label>
+                  <label className="block font-bold text-slate-500 mb-1">
+                    {(editEmpState.jenisKepegawaian || 'PNS') === 'BLUD' ? 'NRPTT (No. Registrasi Tenaga Kontrak)' : 'N.I.P (18 Angka)'}
+                  </label>
                   <input
                     type="text"
                     required
-                    maxLength={18}
+                    maxLength={(editEmpState.jenisKepegawaian || 'PNS') === 'PNS' ? 18 : 30}
                     value={editEmpState.nip || ''}
                     onChange={(e) => setEditEmpState(prev => ({ ...prev, nip: e.target.value }))}
                     className="w-full bg-slate-55 border border-slate-200 rounded-xl py-2 px-3 focus:outline-teal-500 font-mono font-semibold"
@@ -2995,7 +3498,9 @@ export default function App() {
                             <tr>
                               <th className="p-3 pl-4">No.</th>
                               <th className="p-3">Nama Lengkap & Jenis</th>
-                              <th className="p-3">NIP / No Kontrak</th>
+                              <th className="p-3">
+                                {excelUploadTargetType === 'BLUD' ? 'NRPTT' : 'NIP / No Kontrak'}
+                              </th>
                               <th className="p-3">Unit Kerja</th>
                               <th className="p-3">Tempat, Tgl Lahir / Usia</th>
                             </tr>
