@@ -658,15 +658,19 @@ export default function App() {
   // Pension Planning (Age threshold >= 57 in Indonesia civil service PNS approaching pension)
   const pensionEmployees = useMemo(() => {
     return filteredEmployees.map(emp => {
-      // Typically retirement age is 58 for admin/non-medis, 60 for nurses/midwives/madya, 65 for specialized doctors
+      // Typically retirement age is 58 for admin/non-medis, 60 for nurses/midwives/madya/BLUD, 65 for specialized doctors
       let retirementAge = 58;
-      const isDoctor = emp.nama.toLowerCase().includes('dr.') || emp.nama.toLowerCase().includes('drg.');
-      const isNurseOrMidwife = emp.nama.toLowerCase().includes('ns.') || emp.pendidikanTerakhir.toLowerCase().includes('kebidanan') || emp.pendidikanTerakhir.toLowerCase().includes('keperawatan');
-      
-      if (isDoctor) {
-        retirementAge = emp.golongan.startsWith('IV') ? 65 : 60;
-      } else if (isNurseOrMidwife) {
+      if (emp.jenisKepegawaian === 'BLUD') {
         retirementAge = 60;
+      } else {
+        const isDoctor = emp.nama.toLowerCase().includes('dr.') || emp.nama.toLowerCase().includes('drg.');
+        const isNurseOrMidwife = emp.nama.toLowerCase().includes('ns.') || emp.pendidikanTerakhir.toLowerCase().includes('kebidanan') || emp.pendidikanTerakhir.toLowerCase().includes('keperawatan');
+        
+        if (isDoctor) {
+          retirementAge = emp.golongan.startsWith('IV') ? 65 : 60;
+        } else if (isNurseOrMidwife) {
+          retirementAge = 60;
+        }
       }
 
       const yearsToRetire = retirementAge - emp.usiaTahun;
@@ -702,13 +706,17 @@ export default function App() {
   const pensionStats = useMemo(() => {
     const allRetirements = employees.map(emp => {
       let retirementAge = 58;
-      const isDoctor = emp.nama.toLowerCase().includes('dr.') || emp.nama.toLowerCase().includes('drg.');
-      const isNurseOrMidwife = emp.nama.toLowerCase().includes('ns.') || emp.pendidikanTerakhir.toLowerCase().includes('kebidanan') || emp.pendidikanTerakhir.toLowerCase().includes('keperawatan');
-      
-      if (isDoctor) {
-        retirementAge = emp.golongan.startsWith('IV') ? 65 : 60;
-      } else if (isNurseOrMidwife) {
+      if (emp.jenisKepegawaian === 'BLUD') {
         retirementAge = 60;
+      } else {
+        const isDoctor = emp.nama.toLowerCase().includes('dr.') || emp.nama.toLowerCase().includes('drg.');
+        const isNurseOrMidwife = emp.nama.toLowerCase().includes('ns.') || emp.pendidikanTerakhir.toLowerCase().includes('kebidanan') || emp.pendidikanTerakhir.toLowerCase().includes('keperawatan');
+        
+        if (isDoctor) {
+          retirementAge = emp.golongan.startsWith('IV') ? 65 : 60;
+        } else if (isNurseOrMidwife) {
+          retirementAge = 60;
+        }
       }
 
       const yearsToRetire = retirementAge - emp.usiaTahun;
@@ -734,19 +742,19 @@ export default function App() {
   // --- RECHARTS DATA FORMATTING ---
   const chartAgeData = useMemo(() => {
     const categories = {
-      'Sangat Muda (<35 th)': 0,
-      'Muda (35-44 th)': 0,
-      'Dewasa (45-54 th)': 0,
-      'Mendekati Pensiun (55-59 th)': 0,
-      'Senior (≥60 th)': 0,
+      '<35 th': 0,
+      '35-44 th': 0,
+      '45-54 th (Dewasa)': 0,
+      '55-59 th': 0,
+      '>60 th': 0,
     };
 
     employees.forEach(emp => {
-      if (emp.usiaTahun < 35) categories['Sangat Muda (<35 th)']++;
-      else if (emp.usiaTahun >= 35 && emp.usiaTahun < 45) categories['Muda (35-44 th)']++;
-      else if (emp.usiaTahun >= 45 && emp.usiaTahun < 55) categories['Dewasa (45-54 th)']++;
-      else if (emp.usiaTahun >= 55 && emp.usiaTahun < 60) categories['Mendekati Pensiun (55-59 th)']++;
-      else categories['Senior (≥60 th)']++;
+      if (emp.usiaTahun < 35) categories['<35 th']++;
+      else if (emp.usiaTahun >= 35 && emp.usiaTahun < 45) categories['35-44 th']++;
+      else if (emp.usiaTahun >= 45 && emp.usiaTahun < 55) categories['45-54 th (Dewasa)']++;
+      else if (emp.usiaTahun >= 55 && emp.usiaTahun < 60) categories['55-59 th']++;
+      else categories['>60 th']++;
     });
 
     return Object.entries(categories).map(([name, count]) => ({ name, jumlah: count }));
@@ -876,6 +884,167 @@ export default function App() {
       jenisKepegawaian: 'PNS',
       keterangan: '-'
     });
+  };
+
+  const handleInjectDemoData = () => {
+    const firstNamesL = ["Ahmad", "Budi", "Candra", "Dedi", "Eko", "Fahri", "Gunawan", "Hendra", "Irfan", "Joko", "Kurniawan", "Lukman", "Mulyadi", "Nugroho", "Oki", "Prabowo", "Rian", "Sandi", "Taufik", "Wahyu", "Yudi"];
+    const firstNamesP = ["Ani", "Beti", "Citra", "Dewi", "Evi", "Fitri", "Gita", "Hesti", "Indah", "Julia", "Kartika", "Lestari", "Mega", "Novi", "Olivia", "Putri", "Rina", "Sari", "Tari", "Wulan", "Yanti"];
+    const lastNames = ["Santoso", "Wijaya", "Susanto", "Pratama", "Hidayat", "Saputra", "Wibowo", "Kusuma", "Setiawan", "Budiman", "Siregar", "Lubis", "Nasution", "Situmorang", "Wahyudi", "Gunawan", "Arifin", "Harahap", "Sitorus", "Dahlan"];
+    
+    const tempatLahirList = ["Tarakan", "Samarinda", "Bulungan", "Nunukan", "Malinau", "Tanjung Selor", "Balikpapan"];
+    
+    const unitRuanganList = [
+      "Ruangan ICU", 
+      "Instalasi Gawat Darurat (IGD)", 
+      "Ruangan Mawar", 
+      "Ruangan Melati", 
+      "Ruangan Dahlia", 
+      "Klinik Anak", 
+      "Klinik Bedah",
+      "Bagian Administrasi",
+      "Instalasi Farmasi",
+      "Klinik Penyakit Dalam"
+    ];
+
+    const bidangList = [
+      "Bidang Pelayanan Medik",
+      "Bidang Pelayanan Keperawatan",
+      "Bidang Pelayanan Penunjang",
+      "Bagian Sekretariat",
+      "Bagian Keuangan"
+    ];
+
+    const demoEmployees: Employee[] = [];
+    
+    for (let i = 1; i <= 50; i++) {
+      const isL = i % 2 === 0;
+      const firstName = isL 
+        ? firstNamesL[i % firstNamesL.length] 
+        : firstNamesP[i % firstNamesP.length];
+      const lastName = lastNames[(i * 3) % lastNames.length];
+      
+      // Determine role, title, and rumpun
+      let nama = `${firstName} ${lastName}`;
+      let jabatanTerakhir = "Apoteker";
+      let rumpunJabatan = "Jabatan Fungsional Tertentu";
+      let tingkatPendidikanTerakhir = "S1";
+      let pendidikanTerakhir = "Farmasi";
+      let bidang = bidangList[i % bidangList.length];
+      let unitRuangan = unitRuanganList[i % unitRuanganList.length];
+      const jenisKepegawaian = i % 3 === 0 ? 'PNS' : i % 3 === 1 ? 'P3K' : 'BLUD';
+      
+      const roleSel = i % 5;
+      if (roleSel === 0) {
+        nama = `dr. ${firstName} ${lastName}, Sp.B`;
+        jabatanTerakhir = "Dokter Spesialis Bedah";
+        rumpunJabatan = "Jabatan Fungsional Tertentu";
+        tingkatPendidikanTerakhir = "S2";
+        pendidikanTerakhir = "Spesialis Bedah";
+        bidang = "Bidang Pelayanan Medik";
+      } else if (roleSel === 1) {
+        nama = `${firstName} ${lastName}, S.Kep., Ns.`;
+        jabatanTerakhir = "Perawat Ahli Pertama";
+        rumpunJabatan = "Jabatan Fungsional Tertentu";
+        tingkatPendidikanTerakhir = "S1";
+        pendidikanTerakhir = "Ners Keperawatan";
+        bidang = "Bidang Pelayanan Keperawatan";
+      } else if (roleSel === 2) {
+        nama = `${firstName} ${lastName}, A.Md.Keb.`;
+        jabatanTerakhir = "Bidan Mahir";
+        rumpunJabatan = "Jabatan Fungsional Tertentu";
+        tingkatPendidikanTerakhir = "DIII";
+        pendidikanTerakhir = "Kebidanan";
+        bidang = "Bidang Pelayanan Keperawatan";
+      } else if (roleSel === 3) {
+        nama = `Suhadi ${lastName}, S.E.`;
+        jabatanTerakhir = "Kepala Sub Bagian Kepegawaian";
+        rumpunJabatan = "Jabatan Struktural";
+        tingkatPendidikanTerakhir = "S1";
+        pendidikanTerakhir = "Manajemen Ekonomi";
+        bidang = "Bagian Sekretariat";
+        unitRuangan = "Bagian Kepegawaian";
+      } else {
+        nama = `${firstName} ${lastName}`;
+        jabatanTerakhir = "Staf Administrasi Umum";
+        rumpunJabatan = "Jabatan Fungsional Umum/ Pelaksana";
+        tingkatPendidikanTerakhir = "SMA/SLTA";
+        pendidikanTerakhir = "SLTA Umum";
+        bidang = "Bagian Sekretariat";
+        unitRuangan = "Tata Usaha";
+      }
+
+      // Age random 25-62
+      const age = 25 + (i * 7) % 38; // yields nice spread of ages
+      const birthYear = 2026 - age;
+      const birthMonth = 1 + (i % 12);
+      const birthDay = 1 + (i % 28);
+      const tanggalLahir = `${birthDay.toString().padStart(2, '0')}/${birthMonth.toString().padStart(2, '0')}/${birthYear}`;
+      
+      const entryAge = 23 + (i % 5);
+      const serviceYears = age - entryAge > 2 ? age - entryAge : 2;
+      const startYear = birthYear + entryAge;
+      const tmtCpns = `01/03/${startYear}`;
+      
+      const gender = isL ? 'L' : 'P';
+      const tempatLahir = tempatLahirList[i % tempatLahirList.length];
+      
+      // Golongan & Pangkat mapping based on age and jenis
+      let golongan = "III/a";
+      let pangkat = "Penata Muda";
+      if (jenisKepegawaian === 'PNS') {
+        if (age >= 50) {
+          golongan = "IV/b";
+          pangkat = "Pembina Tingkat I";
+        } else if (age >= 40) {
+          golongan = "III/c";
+          pangkat = "Penata";
+        } else if (age >= 30) {
+          golongan = "III/b";
+          pangkat = "Penata Muda Tingkat I";
+        } else {
+          golongan = "III/a";
+          pangkat = "Penata Muda";
+        }
+      } else if (jenisKepegawaian === 'P3K') {
+        golongan = "Golongan IX";
+        pangkat = "Penata Muda (P3K)";
+      } else {
+        golongan = "BLUD Kontrak";
+        pangkat = "Tenaga Kontrak BLUD";
+      }
+
+      const statusKepegawaian = i === 12 || i === 34 ? 'Cuti' : i === 22 ? 'Tugas Belajar' : 'Aktif';
+
+      demoEmployees.push({
+        id: 202600 + i,
+        nama,
+        nip: jenisKepegawaian === 'BLUD' 
+          ? `6503.BLUD.${1000 + i}` 
+          : `${birthYear}${(birthMonth).toString().padStart(2, '0')}${(birthDay).toString().padStart(2, '0')}${startYear}03${isL ? '1' : '2'}00${i}`,
+        gender,
+        tempatLahir,
+        tanggalLahir,
+        usiaTahun: age,
+        usiaBulan: i % 12,
+        tmtCpns,
+        golongan,
+        pangkat,
+        jabatanTerakhir,
+        rumpunJabatan,
+        pendidikanTerakhir,
+        tingkatPendidikanTerakhir,
+        unitRuangan,
+        bidang,
+        statusKepegawaian,
+        jenisKepegawaian,
+        keterangan: statusKepegawaian === 'Aktif' ? 'Dermaga Kesehatan RSUD' : statusKepegawaian === 'Cuti' ? 'Cuti tahunan disetujui' : 'Tugas belajar S2'
+      });
+    }
+
+    localStorage.setItem('rsud_employees', JSON.stringify(demoEmployees));
+    setEmployees(demoEmployees);
+    setSelectedEmpId(demoEmployees[0]?.id || null);
+    showToast("Berhasil mengisi database kepegawaian dengan 50 Data Demo fiktif!", "success");
   };
 
   const handleResetToPDF = () => {
@@ -1856,7 +2025,7 @@ ${JSON.stringify(shiftData, null, 2)}`;
     }));
 
     const formattedPrompt = `Anda adalah Perencana Strategis SDM RSUD. Saya akan memberikan daftar pegawai RSUD beserta usia, jabatan, dan rumpun profesinya (Medis/Non-Medis).
-Batas usia pensiun adalah: 58 Tahun untuk struktural/staf non-medis, dan 60 Tahun untuk dokter/fungsional tertentu.
+Batas usia pensiun adalah: 58 Tahun untuk struktural/staf non-medis, 60 Tahun untuk pegawai BLUD, dokter, perawat/fungsional tertentu, dan 65 Tahun untuk dokter spesialis senior golongan IV.
 
 Tugas Anda:
 1. Analisis siapa saja pegawai yang akan memasuki masa pensiun dalam waktu 1 hingga 5 tahun ke depan dari tahun 2026.
@@ -2071,6 +2240,14 @@ ${JSON.stringify(rawEmployeeDataForPension, null, 2)}`;
                 <Upload className="w-4 h-4" />
                 <span>Unggah Excel</span>
               </button>
+              <button 
+                onClick={handleInjectDemoData}
+                className="bg-purple-600 hover:bg-purple-700 active:scale-95 transition text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm"
+                title="Isi database dengan 50 data pegawai fiktif untuk demo gratis"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Isi Data Demo</span>
+              </button>
             </div>
           </div>
         </header>
@@ -2097,7 +2274,7 @@ ${JSON.stringify(rawEmployeeDataForPension, null, 2)}`;
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Pegawai Aktif</p>
                   <p className="text-2xl font-black font-display text-slate-800 mt-1">{stats.active}</p>
-                  <div className="text-emerald-600 text-[10px] font-semibold mt-1">● {Math.round((stats.active/stats.total)*100)}% Melayani Medis</div>
+                  <div className="text-emerald-600 text-[10px] font-semibold mt-1">● {stats.total === 0 ? 0 : Math.round((stats.active/stats.total)*100)}% Melayani Medis</div>
                 </div>
                 <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
                   <UserCheck className="w-6 h-6" />
@@ -2139,16 +2316,23 @@ ${JSON.stringify(rawEmployeeDataForPension, null, 2)}`;
                   </div>
                   <span className="text-xs font-semibold px-2 py-1 rounded-md bg-slate-100 text-slate-600">Recharts Grid</span>
                 </div>
-                <div className="flex-1 min-h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartAgeData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                      <YAxis tick={{ fontSize: 10 }} />
-                      <Tooltip />
-                      <Bar dataKey="jumlah" fill="#2563eb" name="Jumlah Staff" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                <div className="flex-1 min-h-[300px] flex items-center justify-center">
+                  {employees.length === 0 ? (
+                    <div className="text-center p-6 flex flex-col items-center justify-center gap-2">
+                      <HelpCircle className="w-8 h-8 text-slate-300 animate-pulse" />
+                      <p className="text-xs font-semibold text-slate-400">Data belum tersedia. Silakan unggah data pegawai.</p>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartAgeData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip />
+                        <Bar dataKey="jumlah" fill="#2563eb" name="Jumlah Staff" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </div>
 
@@ -2159,36 +2343,45 @@ ${JSON.stringify(rawEmployeeDataForPension, null, 2)}`;
                   <p className="text-xs text-slate-400">Pembagian tugas operasional RSUD</p>
                 </div>
 
-                <div className="h-[200px] relative flex justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={chartRumpunData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {chartRumpunData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
+                <div className="h-[200px] relative flex justify-center items-center">
+                  {employees.length === 0 ? (
+                    <div className="text-center p-6 flex flex-col items-center justify-center gap-2">
+                      <HelpCircle className="w-8 h-8 text-slate-300 animate-pulse" />
+                      <p className="text-xs font-semibold text-slate-400">Data belum tersedia. Silakan unggah data pegawai.</p>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={chartRumpunData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {chartRumpunData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
 
                 {/* Legend list */}
-                <div className="grid grid-cols-2 gap-2 mt-4 text-[10px] text-slate-500 font-semibold max-h-[100px] overflow-y-auto">
-                  {chartRumpunData.map((entry, idx) => (
-                    <div key={entry.name} className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-xs shrink-0" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}></span>
-                      <span className="truncate">{entry.name}: {entry.value}</span>
-                    </div>
-                  ))}
-                </div>
+                {employees.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2 mt-4 text-[10px] text-slate-500 font-semibold max-h-[100px] overflow-y-auto">
+                    {chartRumpunData.map((entry, idx) => (
+                      <div key={entry.name} className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-xs shrink-0" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}></span>
+                        <span className="truncate">{entry.name}: {entry.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2199,24 +2392,31 @@ ${JSON.stringify(rawEmployeeDataForPension, null, 2)}`;
                   <h3 className="text-sm font-extrabold text-slate-800">Komposisi Golongan PNS</h3>
                   <p className="text-xs text-slate-400">Analisis kepangkatan kualifikasi kedinasan</p>
                 </div>
-                <div className="flex flex-col gap-4">
-                  {chartGolonganData.map((gol, idx) => {
-                    const percentage = Math.round((gol.value / stats.total) * 100) || 0;
-                    return (
-                      <div key={gol.name}>
-                        <div className="flex justify-between text-xs font-bold text-slate-600 mb-1.5">
-                          <span>{gol.name}</span>
-                          <span>{gol.value} Pegawai ({percentage}%)</span>
+                <div className="flex flex-col gap-4 justify-center">
+                  {employees.length === 0 ? (
+                    <div className="text-center py-12 flex flex-col items-center justify-center gap-2">
+                      <HelpCircle className="w-8 h-8 text-slate-300 animate-pulse" />
+                      <p className="text-xs font-semibold text-slate-400">Data belum tersedia. Silakan unggah data pegawai.</p>
+                    </div>
+                  ) : (
+                    chartGolonganData.map((gol, idx) => {
+                      const percentage = Math.round((gol.value / stats.total) * 100) || 0;
+                      return (
+                        <div key={gol.name}>
+                          <div className="flex justify-between text-xs font-bold text-slate-600 mb-1.5">
+                            <span>{gol.name}</span>
+                            <span>{gol.value} Pegawai ({percentage}%)</span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div 
+                              className="bg-blue-600 h-full rounded-full transition-all duration-1000"
+                              style={{ width: `${percentage}%` }}
+                            ></div>
+                          </div>
                         </div>
-                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                          <div 
-                            className="bg-blue-600 h-full rounded-full transition-all duration-1000"
-                            style={{ width: `${percentage}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
@@ -3015,7 +3215,7 @@ ${JSON.stringify(rawEmployeeDataForPension, null, 2)}`;
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
               <h3 className="text-base font-extrabold text-slate-850 mb-1 font-display">Kalkulator Perencanaan Pensiun Dinas RSUD</h3>
               <p className="text-xs text-slate-400">
-                Menghitung batas usia pensiun (BUP) PNS berdasarkan rumpun jabatan: staf umum dinas pensiun umur 58 tahun, perawat & fungsional madya 60 tahun, serta dokter spesialis utama / ahli utama di umur 65 tahun. Urut berdasarkan waktu pensiun terdekat.
+                Menghitung batas usia pensiun (BUP) berdasarkan rumpun jabatan & status kepegawaian: staf umum dinas pensiun umur 58 tahun, perawat, fungsional madya, & pegawai BLUD di umur 60 tahun, serta dokter spesialis utama / ahli utama di umur 65 tahun.
               </p>
             </div>
 
