@@ -1,0 +1,6 @@
+{
+  "name": "SI-RSUD Canggih",
+  "description": "Sistem Informasi & Analisis Kepegawaian RSUD Canggih Terintegrasi AI",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
