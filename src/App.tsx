@@ -13,6 +13,7 @@ import {
   Users, 
   UserCheck, 
   CalendarClock, 
+  Clock,
   IdCard, 
   BrainCircuit, 
   Search, 
@@ -42,10 +43,14 @@ import {
   FolderOpen,
   Folders,
   Upload,
-  Inbox
+  Inbox,
+  KeyRound,
+  FileText,
+  Copy,
+  Check
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from 'motion/react';
 import { 
   BarChart, 
   Bar, 
@@ -299,16 +304,125 @@ const printIdCard = async (elementId: string) => {
   }
 };
 
+const DEFAULT_CERTS: { [id: number]: string } = {
+  1: "Sertifikasi Kompetensi Spesialis Oftalmologi",
+  2: "Sertifikasi Kursus FESS (Endoskopi Sinus)",
+  3: "Pelatihan USG Obstetri Ginekologi Madya",
+  5: "Sertifikasi Asesor Kompetensi Keperawatan Jantung",
+  8: "Pelatihan Akreditasi Rumah Sakit & Case Manager",
+  9: "Sertifikasi Keperawatan Gawat Darurat (BTCLS)",
+  12: "Sertifikasi Pemimpin Redaksi Jurnal Kesehatan",
+  15: "Pelatihan Pencegahan Pengendalian Infeksi (PPI) RS",
+  18: "Sertifikasi Advanced Cardiac Life Support (ACLS)",
+  21: "Pelatihan Triase Bencana & Manajemen IGD",
+  24: "Sertifikasi Terapi Hemodialisis Ginjal Level 1",
+  27: "Pelatihan ICU Komprehensif Dokter Jaga",
+  31: "Sertifikasi Penanganan Kemoterapi Onkologi",
+  101: "Sertifikasi Kompetensi Keperawatan ICU Dasar",
+  104: "Pelatihan Resusitasi Jantung Paru (RJP)",
+  105: "Sertifikasi ACLS PERKI Kalimantan Utara 2024",
+};
+
 const AUGMENTED_DEFAULT_EMPLOYEES: Employee[] = [
   ...INITIAL_EMPLOYEES.map(emp => ({
     ...emp,
-    jenisKepegawaian: 'PNS' as const
+    jenisKepegawaian: 'PNS' as const,
+    keterangan: DEFAULT_CERTS[emp.id] || emp.keterangan || '-'
   })),
-  ...MOCK_P3K_BLUD_ITEMS
+  ...MOCK_P3K_BLUD_ITEMS.map(emp => ({
+    ...emp,
+    keterangan: DEFAULT_CERTS[emp.id] || emp.keterangan || '-'
+  }))
 ];
 
 export default function App() {
   // --- STATE ---
+  // --- 3D ID Card Tilt Motion State ---
+  const idCardX = useMotionValue(0.5);
+  const idCardY = useMotionValue(0.5);
+
+  const idCardRotateX = useSpring(
+    useTransform(idCardY, (v) => (v - 0.5) * -24),
+    { stiffness: 120, damping: 18 }
+  );
+  const idCardRotateY = useSpring(
+    useTransform(idCardX, (v) => (v - 0.5) * 24),
+    { stiffness: 120, damping: 18 }
+  );
+
+  const idCardGlareBg = useTransform(
+    [idCardX, idCardY],
+    (values) => {
+      const [cx, cy] = values as [number, number];
+      return `radial-gradient(circle at ${cx * 100}% ${cy * 100}%, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0) 60%)`;
+    }
+  );
+
+  const handleIdCardMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    idCardX.set(mouseX / width);
+    idCardY.set(mouseY / height);
+  };
+
+  const handleIdCardMouseLeave = () => {
+    idCardX.set(0.5);
+    idCardY.set(0.5);
+  };
+
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  
+  // Interactive Calendar State (Birthday & TMT)
+  const [calendarMonth, setCalendarMonth] = useState<number>(new Date().getMonth());
+  const [calendarYear, setCalendarYear] = useState<number>(new Date().getFullYear());
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<number | null>(new Date().getDate());
+
+  const parseDateParts = (dateStr: string) => {
+    if (!dateStr || typeof dateStr !== 'string') return null;
+    const parts = dateStr.split('/');
+    if (parts.length !== 3) return null;
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1; // 0-indexed month
+    const year = parseInt(parts[2], 10);
+    if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+    return { day, month, year };
+  };
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatIndonesianDateTime = (date: Date) => {
+    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const months = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    
+    const dayName = days[date.getDay()];
+    const day = date.getDate();
+    const monthName = months[date.getMonth()];
+    const year = date.getFullYear();
+    
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    return {
+      dateString: `${dayName}, ${day} ${monthName} ${year}`,
+      timeString: `${hours}:${minutes}:${seconds}`
+    };
+  };
+
+  const formattedTime = formatIndonesianDateTime(currentTime);
+
   const [employees, setEmployees] = useState<Employee[]>(() => {
     const saved = localStorage.getItem('rsud_employees');
     if (saved) {
@@ -328,6 +442,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [pensionSearchTerm, setPensionSearchTerm] = useState('');
+  const [certSearchTerm, setCertSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
 
@@ -400,6 +515,11 @@ export default function App() {
   const [aiResponse, setAiResponse] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiResponseError] = useState('');
+  const [isAiConfigured, setIsAiConfigured] = useState<boolean | null>(null);
+  const [selectedLetterEmpId, setSelectedLetterEmpId] = useState<string>('');
+  const [letterType, setLetterType] = useState<'SK' | 'Tugas' | 'Peringatan'>('SK');
+  const [letterContext, setLetterContext] = useState('');
+  const [isCopied, setIsCopied] = useState(false);
   const [suggestedPrompts] = useState([
     "Daftarkan 3 dokter spesialis anak di rumah sakit ini beserta NIP mereka.",
     "Analisis statistik pensiun PNS: berapa banyak yang pensiun dalam 2 tahun ke depan jika usia pensiun staff non-medik adalah 58 tahun dan dokter 60 tahun?",
@@ -409,6 +529,19 @@ export default function App() {
 
   // Alert State for actions
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  // --- GEMINI STATUS CHECKER ---
+  useEffect(() => {
+    fetch("/api/gemini/status")
+      .then(res => res.json())
+      .then(data => {
+        setIsAiConfigured(!!data.configured);
+      })
+      .catch(err => {
+        console.error("Gagal memeriksa status AI:", err);
+        setIsAiConfigured(false);
+      });
+  }, []);
 
   // --- PERSISTENCE ---
   useEffect(() => {
@@ -515,6 +648,11 @@ export default function App() {
       countP3K, 
       countBLUD 
     };
+  }, [employees]);
+
+  // Absent / Non-active today details (Cuti & Tugas Belajar)
+  const absentEmployees = useMemo(() => {
+    return employees.filter(e => e.statusKepegawaian === 'Cuti' || e.statusKepegawaian === 'Tugas Belajar');
   }, [employees]);
 
   // Pension Planning (Age threshold >= 57 in Indonesia civil service PNS approaching pension)
@@ -638,6 +776,47 @@ export default function App() {
     });
     return Object.entries(rumpuns).map(([name, count]) => ({ name, value: count }));
   }, [employees]);
+
+  const certStats = useMemo(() => {
+    let withCert = 0;
+    employees.forEach(emp => {
+      const ket = emp.keterangan ? emp.keterangan.trim() : '';
+      const isNotCert = !ket || ket === '-' || ket === '' || ket === 'Cuti Besar' || ket === 'Tugas Belajar' || ket === 'Kontrak BLUD Mandiri RSUD' || ket === 'Diterima Seleksi PPPK Kesehatan 2023';
+      if (!isNotCert) {
+        withCert++;
+      }
+    });
+
+    const total = employees.length;
+    const withoutCert = total - withCert;
+    const percentage = total > 0 ? Math.round((withCert / total) * 100) : 0;
+
+    return { withCert, withoutCert, percentage };
+  }, [employees]);
+
+  const certEmployees = useMemo(() => {
+    const term = certSearchTerm.toLowerCase().trim();
+    return employees
+      .map(emp => {
+        const ket = emp.keterangan ? emp.keterangan.trim() : '';
+        const isNotCert = !ket || ket === '-' || ket === '' || ket === 'Cuti Besar' || ket === 'Tugas Belajar' || ket === 'Kontrak BLUD Mandiri RSUD' || ket === 'Diterima Seleksi PPPK Kesehatan 2023';
+        return {
+          emp,
+          hasCert: !isNotCert,
+          certName: !isNotCert ? ket : null
+        };
+      })
+      .filter(item => {
+        if (!item.hasCert) return false;
+        if (!term) return true;
+        return (
+          item.emp.nama.toLowerCase().includes(term) ||
+          item.certName!.toLowerCase().includes(term) ||
+          item.emp.jabatanTerakhir.toLowerCase().includes(term) ||
+          item.emp.unitRuangan.toLowerCase().includes(term)
+        );
+      });
+  }, [employees, certSearchTerm]);
 
   // colors for pie chart
   const PIE_COLORS = ['#2563eb', '#1e3a8a', '#3b82f6', '#60a5fa', '#475569', '#6366f1'];
@@ -1269,6 +1448,428 @@ export default function App() {
     showToast("Berhasil mengekspor data ke file CSV!", "success");
   };
 
+  const handleExportPDF = () => {
+    try {
+      // Create landscape A4 PDF document
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageHeight = 210;
+      const pageWidth = 297;
+      const margin = 15;
+      const contentWidth = pageWidth - (margin * 2); // 267mm
+
+      // Column widths mapping (totals 267)
+      const colWidths = {
+        no: 10,
+        nama: 55,
+        nip: 42,
+        jenis: 20,
+        jabatan: 55,
+        unit: 65,
+        status: 20
+      };
+
+      const getTruncatedText = (text: string, maxWidthMm: number, fontSize: number) => {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(fontSize);
+        let str = text || '';
+        if (doc.getTextWidth(str) <= maxWidthMm - 2) return str;
+        while (str.length > 0 && doc.getTextWidth(str + '...') > maxWidthMm - 2) {
+          str = str.slice(0, -1);
+        }
+        return str + '...';
+      };
+
+      const drawHeader = (pageNum: number) => {
+        if (pageNum === 1) {
+          // Centered Header
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.setTextColor(51, 65, 85); // slate-700
+          doc.text("PEMERINTAH PROVINSI KALIMANTAN UTARA", pageWidth / 2, 14, { align: 'center' });
+          
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.setTextColor(30, 41, 59); // deep navy
+          doc.text("RSUD dr. H. JUSUF SK", pageWidth / 2, 21, { align: 'center' });
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8.5);
+          doc.setTextColor(100, 116, 139); // slate-500
+          doc.text("Jl. dr. H. Jusuf SK No. 2, Tarakan, Kalimantan Utara 77114", pageWidth / 2, 26, { align: 'center' });
+          doc.text("Email: kontak@rsudjusufsk.go.id | Telp: (0551) 21166 | Fax: (0551) 21167", pageWidth / 2, 30, { align: 'center' });
+
+          // Double Line under Kop
+          doc.setDrawColor(30, 41, 59);
+          doc.setLineWidth(0.8);
+          doc.line(margin, 34, pageWidth - margin, 34);
+          doc.setLineWidth(0.2);
+          doc.line(margin, 35.2, pageWidth - margin, 35.2);
+
+          // Document Title
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          doc.setTextColor(15, 23, 42); // slate-900
+          doc.text("LAPORAN DATA PEGAWAI & ROSTER STAFF", margin, 44);
+
+          // Filters and Date Subtitle
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8);
+          doc.setTextColor(100, 116, 139);
+          
+          let folderName = 'Semua Berkas';
+          if (selectedFolderType === 'PNS') folderName = 'Berkas PNS';
+          if (selectedFolderType === 'P3K') folderName = 'Berkas PPPK / P3K';
+          if (selectedFolderType === 'BLUD') folderName = 'Berkas BLUD Mandiri';
+
+          const formattedNow = new Date().toLocaleDateString('id-ID', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          });
+
+          doc.text(`Kriteria Folder: ${folderName} (${filteredEmployees.length} Pegawai)`, margin, 49);
+          doc.text(`Tanggal Ekspor: ${formattedNow}`, pageWidth - margin, 49, { align: 'right' });
+        } else {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          doc.setTextColor(100, 116, 139);
+          doc.text("RSUD dr. H. JUSUF SK - Roster Staff Report", margin, 12);
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8);
+          doc.text(`Halaman ${pageNum}`, pageWidth - margin, 12, { align: 'right' });
+
+          doc.setDrawColor(226, 232, 240); // slate-200
+          doc.setLineWidth(0.3);
+          doc.line(margin, 14.5, pageWidth - margin, 14.5);
+        }
+      };
+
+      const drawTableHeader = (y: number) => {
+        doc.setFillColor(30, 41, 59); // deep navy
+        doc.rect(margin, y, contentWidth, 8.5, 'F');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(255, 255, 255);
+
+        let curX = margin;
+        
+        doc.text("NO", curX + 2, y + 5.5);
+        curX += colWidths.no;
+        doc.text("NAMA LENGKAP", curX + 3, y + 5.5);
+        curX += colWidths.nama;
+        doc.text("NIP / KODE PEG.", curX + 3, y + 5.5);
+        curX += colWidths.nip;
+        doc.text("JENIS", curX + 3, y + 5.5);
+        curX += colWidths.jenis;
+        doc.text("JABATAN TERAKHIR", curX + 3, y + 5.5);
+        curX += colWidths.jabatan;
+        doc.text("UNIT / RUANGAN", curX + 3, y + 5.5);
+        curX += colWidths.unit;
+        doc.text("STATUS", curX + 3, y + 5.5);
+      };
+
+      const drawFooter = (pageNum: number, totalPages: number) => {
+        const y = pageHeight - 12;
+        doc.setDrawColor(241, 245, 249); // slate-100
+        doc.setLineWidth(0.3);
+        doc.line(margin, y, pageWidth - margin, y);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(148, 163, 184); // slate-400
+        doc.text("Dokumen ini digenerasikan secara otomatis oleh SI-RSUD dr.H.Jusuf.SK Management System", margin, y + 5);
+        doc.text(`Halaman ${pageNum} dari ${totalPages}`, pageWidth - margin, y + 5, { align: 'right' });
+      };
+
+      const rowHeight = 7.5;
+      const maxPageY = 190;
+      
+      const pagesData: Employee[][] = [[]];
+      let pageIndex = 0;
+      let tempY = 55 + 8.5; // Starts at table header
+
+      filteredEmployees.forEach((emp) => {
+        if (tempY + rowHeight > maxPageY) {
+          pageIndex++;
+          pagesData[pageIndex] = [];
+          tempY = 20 + 8.5; // Subsequent pages table
+        }
+        pagesData[pageIndex].push(emp);
+        tempY += rowHeight;
+      });
+
+      const totalPagesCount = pagesData.length;
+
+      pagesData.forEach((pageRows, index) => {
+        const currentPageNum = index + 1;
+        if (currentPageNum > 1) {
+          doc.addPage();
+        }
+
+        drawHeader(currentPageNum);
+        
+        let tableHeaderY = currentPageNum === 1 ? 55 : 20;
+        drawTableHeader(tableHeaderY);
+
+        let rowY = tableHeaderY + 8.5;
+
+        pageRows.forEach((emp, rIndex) => {
+          const globalIndex = pagesData.slice(0, index).reduce((acc, currentList) => acc + currentList.length, 0) + rIndex + 1;
+
+          if (globalIndex % 2 === 0) {
+            doc.setFillColor(248, 250, 252); // slate-50
+          } else {
+            doc.setFillColor(255, 255, 255);
+          }
+          doc.rect(margin, rowY, contentWidth, rowHeight, 'F');
+
+          doc.setDrawColor(241, 245, 249);
+          doc.setLineWidth(0.1);
+          doc.line(margin, rowY + rowHeight, pageWidth - margin, rowY + rowHeight);
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7.5);
+          doc.setTextColor(51, 65, 85);
+
+          let curX = margin;
+
+          doc.text(String(globalIndex), curX + 2, rowY + 4.8);
+          curX += colWidths.no;
+
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(30, 41, 59);
+          doc.text(getTruncatedText(emp.nama, colWidths.nama, 7.5), curX + 3, rowY + 4.8);
+          curX += colWidths.nama;
+
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(71, 85, 105);
+          doc.text(emp.nip, curX + 3, rowY + 4.8);
+          curX += colWidths.nip;
+
+          doc.setFont('helvetica', 'bold');
+          let jbgTypeColor = [71, 85, 105];
+          if (emp.jenisKepegawaian === 'PNS') jbgTypeColor = [37, 99, 235];
+          if (emp.jenisKepegawaian === 'P3K') jbgTypeColor = [13, 148, 136];
+          
+          doc.setTextColor(jbgTypeColor[0], jbgTypeColor[1], jbgTypeColor[2]);
+          doc.text(emp.jenisKepegawaian || 'PNS', curX + 3, rowY + 4.8);
+          curX += colWidths.jenis;
+
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(71, 85, 105);
+          doc.text(getTruncatedText(emp.jabatanTerakhir, colWidths.jabatan, 7.5), curX + 3, rowY + 4.8);
+          curX += colWidths.jabatan;
+
+          doc.text(getTruncatedText(emp.unitRuangan, colWidths.unit, 7.5), curX + 3, rowY + 4.8);
+          curX += colWidths.unit;
+
+          let statusText = emp.statusKepegawaian || 'Aktif';
+          if (statusText === 'Aktif') {
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(22, 163, 74);
+          } else if (statusText === 'Cuti') {
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(217, 119, 6);
+          } else {
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(79, 70, 229);
+          }
+          doc.text(statusText, curX + 3, rowY + 4.8);
+
+          rowY += rowHeight;
+        });
+
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(0.2);
+        doc.rect(margin, tableHeaderY, contentWidth, rowY - tableHeaderY);
+
+        drawFooter(currentPageNum, totalPagesCount);
+      });
+
+      doc.save(`Roster_Pegawai_RSUD_dr_H_Jusuf_SK_${new Date().toISOString().split('T')[0]}.pdf`);
+      showToast("Berhasil mencetak seluruh data pegawai dengan Kop Surat ke file PDF!", "success");
+    } catch (error) {
+      console.error("Gagal cetak PDF data pegawai:", error);
+      showToast("Gagal menghasilkan dokumen PDF data pegawai", "error");
+    }
+  };
+
+  // --- COMPILATION AID METHODS ---
+  const handleCopyToClipboard = (text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setIsCopied(true);
+    showToast("Draf berhasil disalin ke clipboard!", "success");
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const handleDownloadLetterAsTxt = (text: string) => {
+    if (!text) return;
+    const element = document.createElement("a");
+    const file = new Blob([text], {type: 'text/plain'});
+    element.href = URL.createObjectURL(file);
+    element.download = `Draf_Surat_${letterType}_${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+    showToast("Draf surat berhasil diunduh sebagai berkas teks!", "success");
+  };
+
+  const handleGenerateLetter = () => {
+    const selectedEmp = employees.find(e => e.id === selectedLetterEmpId);
+    if (!selectedEmp) {
+      showToast("Silakan pilih pegawai terlebih dahulu!", "error");
+      return;
+    }
+    
+    const employeeDataText = `
+- Nama: ${selectedEmp.nama}
+- NIP: ${selectedEmp.nip || '---'}
+- Pangkat/Golongan: ${selectedEmp.pangkat || '---'} (${selectedEmp.golongan || '---'})
+- Jabatan: ${selectedEmp.jabatanTerakhir || '---'}
+- Unit Kerja / Ruangan: ${selectedEmp.unitRuangan || '---'}
+`;
+
+    const inputContext = letterContext ? letterContext : "(Tidak ada instruksi tambahan dari admin)";
+    const letterName = letterType === 'SK' ? 'Surat Keputusan (SK) Direktur' : letterType === 'Tugas' ? 'Surat Tugas' : 'Surat Peringatan';
+
+    const formattedPrompt = `Anda adalah Sekretaris Tata Usaha RSUD dr.H.Jusuf.SK yang ahli dalam membuat dokumen birokrasi pemerintahan/rumah sakit.
+
+Buat draf resmi untuk: ${letterName}.
+
+Data Pegawai yang Dituju:
+${employeeDataText}
+
+Konteks/Instruksi Tambahan dari Admin:
+"${inputContext}"
+
+Instruksi Format Surat:
+1. Gunakan bahasa Indonesia formal dan baku sesuai standar tata naskah dinas.
+2. Susun bagian pembuka (Menimbang, Mengingat) jika itu berupa SK, atau langsung isi surat jika Surat Tugas.
+3. Masukkan poin-poin penugasan/keputusan dengan jelas.
+4. Akhiri dengan penutup, tempat (Tarakan), tanggal hari ini, dan ruang untuk tanda tangan Direktur RSUD dr.H.Jusuf.SK.
+5. Keluarkan hanya teks draf suratnya saja tanpa obrolan basa-basi.`;
+
+    handleAIConsultation(formattedPrompt);
+  };
+
+  const handleAnalyzeNursePatientRatio = () => {
+    const perawatByRoom: { [room: string]: number } = {};
+    employees.forEach(emp => {
+      const isPerawat = emp.jabatanTerakhir?.toLowerCase().includes("perawat") || emp.bidang?.toLowerCase().includes("keperawatan");
+      if (isPerawat) {
+        const r = emp.unitRuangan || "Umum / Poliklinik";
+        perawatByRoom[r] = (perawatByRoom[r] || 0) + 1;
+      }
+    });
+
+    const roomsList = ["Ruangan ICU", "Instalasi Gawat Darurat (IGD)", "Ruangan Mawar", "Ruangan Melati", "Ruangan Dahlia", "Klinik Anak", "Klinik Bedah"];
+    const wardData = roomsList.map(room => {
+      const count = perawatByRoom[room] ?? (room.includes("ICU") ? 3 : room.includes("IGD") ? 5 : 4);
+      let patientCount = 15;
+      if (room.includes("ICU")) patientCount = 6;
+      else if (room.includes("IGD")) patientCount = 22;
+      else if (room.includes("Melati")) patientCount = 28;
+      else if (room.includes("Dahlia")) patientCount = 18;
+      return {
+        nama_ruangan: room,
+        jumlah_perawat_bertugas: count,
+        jumlah_pasien: patientCount
+      };
+    });
+
+    const formattedPrompt = `Anda adalah Analis SDM Rumah Sakit dan ahli dalam manajemen bangsal. Saya akan memberikan data jumlah pasien dan jumlah perawat yang bertugas di masing-masing ruangan (bangsal) di RSUD dr.H.Jusuf.SK.
+
+Tugas Anda:
+1. Hitung rasio perawat terhadap pasien untuk setiap ruangan.
+2. Evaluasi apakah rasio tersebut memenuhi standar ideal (Asumsi standar: ICU 1:1 atau 1:2, UGD 1:2, Rawat Inap Reguler 1:4 hingga 1:6).
+3. Identifikasi ruangan mana yang berstatus "Kritis" (kekurangan perawat) dan ruangan mana yang "Aman" atau "Berlebih".
+4. Berikan rekomendasi singkat pemindahan/perbantuan (mutasi sementara) perawat dari ruangan yang berlebih ke ruangan yang kritis.
+5. Sajikan dalam format laporan teks yang rapi, gunakan bullet points atau tabel markdown.
+
+Data Ruangan:
+${JSON.stringify(wardData, null, 2)}`;
+
+    handleAIConsultation(formattedPrompt);
+  };
+
+  const handleDetectShiftDisparities = () => {
+    const shiftData = employees
+      .filter(emp => emp.jabatanTerakhir?.toLowerCase().includes("perawat") || emp.bidang?.toLowerCase().includes("keperawatan"))
+      .slice(0, 15)
+      .map(emp => {
+        const isSenior = emp.golongan?.startsWith("IV") || emp.golongan?.startsWith("III/c") || emp.golongan?.startsWith("III/d") || emp.jabatanTerakhir?.toLowerCase().includes("penyelia") || emp.usiaTahun > 40;
+        const level = isSenior ? "Senior (Katim)" : "Junior";
+        
+        const shifts: string[] = [];
+        for (let day = 1; day <= 7; day++) {
+          if (emp.id % 5 === 0) {
+            shifts.push(day >= 2 && day <= 5 ? "Malam" : "Off");
+          } else if (emp.id % 4 === 0) {
+            shifts.push(day <= 5 ? "Pagi" : "Sore");
+          } else {
+            const rand = (emp.id + day) % 4;
+            shifts.push(rand === 0 ? "Pagi" : rand === 1 ? "Sore" : rand === 2 ? "Malam" : "Off");
+          }
+        }
+        
+        return {
+          id: emp.id,
+          nama: emp.nama,
+          kompetensi: level,
+          unit: emp.unitRuangan,
+          jadwal_shift_senin_minggu: shifts
+        };
+      });
+
+    const formattedPrompt = `Anda adalah Auditor Manajemen Jadwal Rumah Sakit. Berikut adalah data jadwal shift tenaga medis/perawat RSUD dr.H.Jusuf.SK untuk minggu ini.
+
+Tugas Anda: Analisis jadwal ini dan deteksi ketimpangan atau pelanggaran aturan beban kerja. Carilah anomali berikut:
+1. Kekurangan Kompetensi: Shift (terutama malam) yang diisi sepenuhnya oleh perawat Junior tanpa pendampingan perawat Senior/Ketua Tim (Katim).
+2. Beban Kerja Berlebih: Pegawai yang mendapat jadwal shift malam (Night Shift) lebih dari 3 kali berturut-turut, atau pegawai yang tidak memiliki waktu libur (off) minimal 1 hari setelah shift malam.
+3. Distribusi Tidak Merata: Ruangan dengan penumpukan staf di shift pagi, tetapi sangat kekurangan staf di shift malam.
+
+Berikan laporan "Temuan Ketimpangan" beserta nama pegawai/ruangan yang terdampak, dan berikan "Saran Perbaikan Jadwal".
+
+Data Jadwal Shift:
+${JSON.stringify(shiftData, null, 2)}`;
+
+    handleAIConsultation(formattedPrompt);
+  };
+
+  const handleShowRetirementProjection5Years = () => {
+    const rawEmployeeDataForPension = employees.slice(0, 25).map(emp => ({
+      nama: emp.nama,
+      usia: emp.usiaTahun,
+      tanggal_lahir: emp.tanggalLahir,
+      jabatan: emp.jabatanTerakhir,
+      rumpun: emp.rumpunJabatan,
+      golongan: emp.golongan
+    }));
+
+    const formattedPrompt = `Anda adalah Perencana Strategis SDM RSUD. Saya akan memberikan daftar pegawai RSUD beserta usia, jabatan, dan rumpun profesinya (Medis/Non-Medis).
+Batas usia pensiun adalah: 58 Tahun untuk struktural/staf non-medis, dan 60 Tahun untuk dokter/fungsional tertentu.
+
+Tugas Anda:
+1. Analisis siapa saja pegawai yang akan memasuki masa pensiun dalam waktu 1 hingga 5 tahun ke depan dari tahun 2026.
+2. Kelompokkan jumlah pegawai yang pensiun berdasarkan tahun (2026, 2027, 2028, dst) dan berdasarkan rumpun (Medis vs Non-Medis).
+3. Identifikasi "Posisi Kritis" (misal: jika ada Dokter Spesialis Bedah atau Kepala Ruangan yang akan pensiun dalam 2 tahun).
+4. Buat laporan ringkasan eksekutifnya. (Jika sistem meminta data grafik, keluarkan output dalam format JSON array yang berisi tahun dan jumlah pensiun medis/non-medis agar bisa diproses oleh frontend chart).
+
+Data Pegawai:
+${JSON.stringify(rawEmployeeDataForPension, null, 2)}`;
+
+    handleAIConsultation(formattedPrompt);
+  };
+
   // --- GEMINI COMPILATION ASSISTANT INTERACTION ---
   const handleAIConsultation = async (customPrompt?: string) => {
     const promptToUse = customPrompt || aiQuery;
@@ -1315,10 +1916,10 @@ export default function App() {
 
   // Run automatically on 'consultant' view setup first time if clean
   useEffect(() => {
-    if (activeTab === 'consultant' && !aiResponse && !aiLoading) {
-      handleAIConsultation("Berikan analisis demografi makro, statistik pensiun, serta 3 temuan kunci kepegawaian.");
+    if (activeTab === 'consultant' && isAiConfigured === true && !aiResponse && !aiLoading) {
+      handleAIConsultation("Analisislah profil kepegawaian RSUD dr. H. Jusuf SK saat ini secara makro. Sebutkan ringkasan jumlah staf, sebaran perawat vs dokter, status kepegawaian PNS vs Non-PNS, serta 3 poin rekomendasi strategis untuk Direktur.");
     }
-  }, [activeTab]);
+  }, [activeTab, isAiConfigured]);
 
   return (
     <div id="si-rsud" className="h-screen w-screen bg-slate-50 flex overflow-hidden font-sans text-slate-900 antialiased">
@@ -1400,7 +2001,7 @@ export default function App() {
             }`}
           >
             <BrainCircuit className="w-4.5 h-4.5 text-blue-500 animate-pulse" />
-            <span>Konsultan AI Sinergi</span>
+            <span>Analitik SDM & SK</span>
           </button>
         </nav>
 
@@ -1425,7 +2026,19 @@ export default function App() {
                'Konsultan AI Sinergi'}
             </h2>
             <div className="h-6 w-[1px] bg-slate-200"></div>
-            <span className="text-sm text-slate-500">Selasa, 16 Juni 2026</span>
+            
+            <div className="flex items-center gap-3 bg-slate-50 border border-slate-100 shadow-2xs px-3.5 py-1.5 rounded-full select-none">
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <div className="flex items-center gap-2 font-mono text-[11px] font-semibold text-slate-600">
+                <Clock className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
+                <span className="text-slate-800 font-bold tracking-tight font-sans">{formattedTime.dateString}</span>
+                <span className="text-slate-300">|</span>
+                <span className="bg-slate-950 text-emerald-400 px-2 py-0.5 rounded font-bold text-[11px] tabular-nums tracking-widest border border-slate-800 shadow-xs">{formattedTime.timeString}</span>
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-6">
             <div className="text-xs text-slate-400 font-semibold">
@@ -1579,7 +2192,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* PNS LEVEL CHART representation */}
               <div id="card-pns-level" className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
                 <div className="mb-4">
@@ -1607,31 +2220,153 @@ export default function App() {
                 </div>
               </div>
 
-              {/* CLINIC/UNIT CAPACITIES */}
+              {/* CLINIC/UNIT CAPACITIES (KEHADIRAN HARI INI) */}
               <div id="card-clinics" className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs flex flex-col justify-between">
                 <div>
-                  <h3 className="text-sm font-extrabold text-slate-800">Status & Keberadaan Pegawai</h3>
-                  <p className="text-xs text-slate-400">Status dinas aktif harian hari ini</p>
+                  <h3 className="text-sm font-extrabold text-slate-800">Kehadiran Hari Ini</h3>
+                  <p className="text-xs text-slate-400">Pegawai yang sedang dinas aktif, cuti, atau tugas belajar</p>
                 </div>
-                <div className="flex justify-around items-center py-4">
+                
+                <div className="flex justify-around items-center py-4 bg-slate-50/50 rounded-xl my-3 border border-slate-100">
                   <div className="text-center">
                     <span className="text-2xl font-black text-emerald-600">{stats.active}</span>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Aktif Melayani</p>
+                    <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mt-1">Aktif Melayani</p>
                   </div>
-                  <div className="h-10 w-px bg-slate-200"></div>
+                  <div className="h-8 w-px bg-slate-200"></div>
                   <div className="text-center">
                     <span className="text-2xl font-black text-rose-500">{stats.cuti}</span>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sedang Cuti</p>
+                    <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mt-1">Sedang Cuti</p>
                   </div>
-                  <div className="h-10 w-px bg-slate-200"></div>
+                  <div className="h-8 w-px bg-slate-200"></div>
                   <div className="text-center">
                     <span className="text-2xl font-black text-indigo-500">{stats.tugasBelajar}</span>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Tugas Belajar</p>
+                    <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mt-1">Tugas Belajar</p>
                   </div>
                 </div>
-                <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-xs text-amber-800 flex gap-2 items-center">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
-                  <span>Cuti &amp; Tugas belajar otomatis diperbarui saat mengubah status profil.</span>
+
+                {/* List detail of leave & study assignments */}
+                <div className="flex-1 flex flex-col min-h-[160px] my-1">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2 block">Daftar Pegawai Non-Aktif Hari Ini</span>
+                  {absentEmployees.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-4 bg-slate-50/40 rounded-xl border border-dashed border-slate-200 text-center">
+                      <CheckCircle className="w-5 h-5 text-emerald-500 mb-1" />
+                      <p className="text-xs text-slate-700 font-bold">Semua Staf Hadir</p>
+                      <p className="text-[9.5px] text-slate-400">Seluruh pegawai sedang berdinas aktif melayani hari ini.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[150px] overflow-y-auto pr-1">
+                      {absentEmployees.map(emp => (
+                        <div key={emp.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg border border-slate-50 transition-all text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className={`w-7 h-7 rounded-md flex items-center justify-center font-bold text-[10px] shrink-0 select-none ${
+                              emp.statusKepegawaian === 'Cuti' 
+                                ? 'bg-rose-50 text-rose-700 border border-rose-100' 
+                                : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                            }`}>
+                              {emp.nama.replace('dr.', '').replace('Ns.', '').slice(0, 2).trim().toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-800 truncate" title={emp.nama}>{emp.nama}</p>
+                              <p className="text-[9px] text-slate-450 truncate" title={emp.unitRuangan}>{emp.unitRuangan}</p>
+                            </div>
+                          </div>
+                          <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full select-none shrink-0 ${
+                            emp.statusKepegawaian === 'Cuti'
+                              ? 'bg-rose-100/70 text-rose-700 border border-rose-200/40'
+                              : 'bg-indigo-100/70 text-indigo-700 border border-indigo-200/40'
+                          }`}>
+                            {emp.statusKepegawaian === 'Cuti' ? 'Cuti' : 'Tugas Belajar'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-200/80 text-[10px] text-amber-800 flex gap-1.5 items-center mt-2">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-650" />
+                  <span>Status otomatis terhubung dengan direktori kepegawaian RSUD.</span>
+                </div>
+              </div>
+
+              {/* STATUS SERTIFIKASI & PELATIHAN TERAKHIR */}
+              <div id="card-certifications" className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs flex flex-col justify-between">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800">Sertifikasi & Pelatihan Terakhir</h3>
+                  <p className="text-xs text-slate-400">Pegawai dengan riwayat diklat atau sertifikasi pada sistem</p>
+                </div>
+
+                <div className="flex justify-around items-center py-4 bg-slate-50/50 rounded-xl my-3 border border-slate-100">
+                  <div className="text-center">
+                    <span className="text-2xl font-black text-blue-600">{certStats.withCert}</span>
+                    <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mt-1">Tersertifikasi</p>
+                  </div>
+                  <div className="h-8 w-px bg-slate-200"></div>
+                  <div className="text-center">
+                    <span className="text-2xl font-black text-slate-400">{certStats.withoutCert}</span>
+                    <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mt-1">Belum Tercatat</p>
+                  </div>
+                  <div className="h-8 w-px bg-slate-200"></div>
+                  <div className="text-center">
+                    <span className="text-2xl font-black text-indigo-500">{certStats.percentage}%</span>
+                    <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mt-1">Rasio Kesiapan</p>
+                  </div>
+                </div>
+
+                {/* Search input inside card */}
+                <div className="relative mb-2 shrink-0">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Cari sertifikasi atau staf..."
+                    value={certSearchTerm}
+                    onChange={(e) => setCertSearchTerm(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 border border-slate-200 rounded-xl text-[11.5px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-slate-50"
+                  />
+                  {certSearchTerm && (
+                    <button
+                      onClick={() => setCertSearchTerm('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 font-bold text-[10px] text-slate-400 hover:text-slate-600"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                {/* List detail of certifications */}
+                <div className="flex-1 flex flex-col min-h-[160px] my-1">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2 block">Daftar Kualifikasi Staf</span>
+                  {certEmployees.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-4 bg-slate-50/40 rounded-xl border border-dashed border-slate-200 text-center">
+                      <Inbox className="w-5 h-5 text-slate-300 mb-1" />
+                      <p className="text-xs text-slate-600 font-bold">Tidak Ada Data</p>
+                      <p className="text-[9.5px] text-slate-400">Tidak ada data pelatihan cocok dengan pencarian.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[150px] overflow-y-auto pr-1">
+                      {certEmployees.map(({ emp, certName }) => (
+                        <div key={emp.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg border border-slate-50 transition-all text-xs">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <div className="w-7 h-7 rounded-md flex items-center justify-center font-bold text-[10px] bg-blue-50 text-blue-700 border border-blue-100 shrink-0 select-none">
+                              {emp.nama.replace('dr.', '').replace('Ns.', '').slice(0, 2).trim().toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-slate-800 truncate text-[11px]" title={emp.nama}>{emp.nama}</p>
+                              <p className="text-[10px] text-blue-600 font-semibold truncate leading-tight mt-0.5" title={certName}>{certName}</p>
+                            </div>
+                          </div>
+                          <span className="text-[9px] text-slate-400 shrink-0 bg-slate-100 px-1.5 py-0.5 rounded-sm ml-2 font-mono whitespace-nowrap" title={emp.unitRuangan}>
+                            {emp.unitRuangan.length > 9 ? emp.unitRuangan.slice(0, 9) + '..' : emp.unitRuangan}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-blue-50 p-2.5 rounded-xl border border-blue-200/40 text-[10px] text-blue-800 flex gap-1.5 items-center mt-2 shrink-0">
+                  <Award className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>Tekan edit pegawai di tabel untuk memperbarui keterangan sertifikasi.</span>
                 </div>
               </div>
             </div>
@@ -1671,6 +2406,15 @@ export default function App() {
                   >
                     <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                     <span className="hidden sm:inline">Unduh Spreadsheet CSV</span>
+                  </button>
+
+                  <button
+                    onClick={handleExportPDF}
+                    className="p-2 border border-rose-200 bg-rose-50/40 hover:bg-rose-100/60 transition text-rose-750 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Cetak seluruh data berfilter ke PDF resmi dengan Kop Surat instansi"
+                  >
+                    <Printer className="w-4 h-4 text-rose-600" />
+                    <span>Cetak PDF Laporan</span>
                   </button>
 
                   <button
@@ -2406,171 +3150,470 @@ export default function App() {
               </div>
             </div>
 
-            {/* RETIREMENTS LIST GRID */}
-            <div id="card-pension-calculator" className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex-1 flex flex-col">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100 mb-4">
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-extrabold text-slate-800">Daftar Pegawai Mendekati Masa Pensiun</span>
-                  <p className="text-[10px] text-slate-400">Data terintegrasi dan tersinkronisasi otomatis</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2.5">
-                  {/* Search Input for Pension */}
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Cari nama, nip, fungsional..."
-                      value={pensionSearchTerm}
-                      onChange={(e) => setPensionSearchTerm(e.target.value)}
-                      className="w-48 sm:w-56 bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 rounded-xl pl-8 pr-7 py-1.5 text-[11px] text-slate-700 outline-hidden transition-all placeholder:text-slate-400"
-                    />
-                    {pensionSearchTerm && (
-                      <button
-                        onClick={() => setPensionSearchTerm('')}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-[10px] w-4 h-4 flex items-center justify-center rounded-full hover:bg-slate-200 transition-colors"
-                      >
-                        ✕
-                      </button>
-                    )}
+            {/* GRID CONTAINER FOR PENSION AND CALENDAR */}
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start w-full">
+              {/* RETIREMENTS LIST GRID */}
+              <div id="card-pension-calculator" className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col xl:col-span-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100 mb-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-extrabold text-slate-800">Daftar Pegawai Mendekati Masa Pensiun</span>
+                    <p className="text-[10px] text-slate-400">Data terintegrasi dan tersinkronisasi otomatis</p>
                   </div>
-                  <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    Kritis (&lt; 3 Tahun): {criticalRetirements.length} Pegawai
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Search Input for Pension */}
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Cari nama, nip, fungsional..."
+                        value={pensionSearchTerm}
+                        onChange={(e) => setPensionSearchTerm(e.target.value)}
+                        className="w-48 sm:w-56 bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 rounded-xl pl-8 pr-7 py-1.5 text-[11px] text-slate-700 outline-hidden transition-all placeholder:text-slate-400"
+                      />
+                      {pensionSearchTerm && (
+                        <button
+                          onClick={() => setPensionSearchTerm('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-[10px] w-4 h-4 flex items-center justify-center rounded-full hover:bg-slate-200 transition-colors"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      Kritis (&lt; 3 Tahun): {criticalRetirements.length} Pegawai
+                    </span>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto flex-1 flex flex-col justify-start min-h-[350px]">
+                  <AnimatePresence mode="wait">
+                    {finalPensionEmployees.length > 0 ? (
+                      <motion.div
+                        key="pension-table"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.25, ease: "easeOut" }}
+                        className="w-full flex-1"
+                      >
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">
+                              <th className="py-3 px-3">Pegawai</th>
+                              <th className="py-3 px-2">Jabatan Terakhir</th>
+                              <th className="py-3 px-2">Kategori Pensiun</th>
+                              <th className="py-3 px-2 text-center">Usia Saat Ini</th>
+                              <th className="py-3 px-2 text-center">BUP (Batas Usia)</th>
+                              <th className="py-3 px-2 text-center">Masa Kerja Tersisa</th>
+                              <th className="py-3 px-3 text-right">Aksi Suksesi</th>
+                            </tr>
+                          </thead>
+                          <motion.tbody 
+                            className="divide-y divide-slate-50"
+                            variants={{
+                              hidden: { opacity: 0 },
+                              show: {
+                                opacity: 1,
+                                transition: {
+                                  staggerChildren: 0.05
+                                }
+                              }
+                            }}
+                            initial="hidden"
+                            animate="show"
+                          >
+                            {finalPensionEmployees.slice(0, 15).map((emp) => {
+                              const isCritical = emp.yearsToRetire <= 3;
+                              return (
+                                <motion.tr 
+                                  key={emp.id} 
+                                  onClick={() => setSelectedEmpId(emp.id)}
+                                  variants={{
+                                    hidden: { opacity: 0, y: 15 },
+                                    show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } }
+                                  }}
+                                  className={`cursor-pointer hover:bg-slate-100/75 hover:-translate-y-[2px] hover:shadow-xs transition-all duration-300 transform-gpu ${
+                                    selectedEmpId === emp.id ? 'bg-blue-50/70 border-l-4 border-l-blue-600' : isCritical ? 'bg-amber-50/20' : ''
+                                  }`}
+                                >
+                                  <td className="py-4 px-3">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded-full bg-slate-150 text-slate-655 flex items-center justify-center font-extrabold font-display border border-slate-200 shrink-0">
+                                        {emp.nama.replace('dr.', '').replace('Ns.', '').slice(0, 2).trim().toUpperCase()}
+                                      </div>
+                                      <div>
+                                        <p className="font-bold text-slate-800 leading-tight">{emp.nama}</p>
+                                        <p className="text-[10px] font-mono text-slate-450 mt-0.5">
+                                          {emp.jenisKepegawaian === 'BLUD' ? 'NRPTT' : 'NIP'}: {emp.nip}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-4 px-2">
+                                    <p className="font-semibold text-slate-700 leading-snug">{emp.jabatanTerakhir}</p>
+                                    <p className="text-[9px] text-slate-400 capitalize">{emp.unitRuangan}</p>
+                                  </td>
+                                  <td className="py-4 px-2">
+                                    <span className="text-xs font-semibold text-slate-600">
+                                      {emp.nama.toLowerCase().includes('dr.') ? 'Ahli Utama Medis' : emp.nama.toLowerCase().includes('ns.') ? 'Perawat Ahli' : 'Staf Administrasi'}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-2 text-center">
+                                    <span className="font-bold font-mono text-slate-800">{emp.usiaTahun} Th</span>
+                                  </td>
+                                  <td className="py-4 px-2 text-center">
+                                    <span className="font-bold font-mono text-blue-600">{emp.retirementAge} Th</span>
+                                  </td>
+                                  <td className="py-4 px-2 text-center">
+                                    {emp.yearsToRetire <= 0 ? (
+                                      <span className="bg-rose-50 border border-rose-200 text-rose-700 font-extrabold px-3 py-1 rounded-full text-[10px]">
+                                        Lewat BUP ({Math.abs(emp.yearsToRetire)} Th LALU)
+                                      </span>
+                                    ) : emp.yearsToRetire <= 3 ? (
+                                      <span className="bg-amber-100 border border-amber-300 text-amber-800 font-black px-3 py-1 rounded-full text-[10px] animate-pulse">
+                                        Kritis ({emp.yearsToRetire} Th Tersisa)
+                                      </span>
+                                    ) : (
+                                      <span className="bg-slate-100 border border-slate-200 text-slate-700 font-bold px-3 py-1 rounded-full text-[10px]">
+                                        Aman ({emp.yearsToRetire} Th Lagi)
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-4 px-3 text-right">
+                                    <button
+                                      onClick={() => {
+                                        const q = `Tolong berikan rekomendasi suksesi dan pelatihan/mutasi khusus untuk ${emp.nama} (${emp.jabatanTerakhir}) yang akan pensiun dalam ${emp.yearsToRetire} tahun, kualifikasi pangkatnya ${emp.pangkat}`;
+                                        setActiveTab('consultant');
+                                        setAiQuery(q);
+                                      }}
+                                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 font-bold text-[10px] rounded-lg transition-all"
+                                    >
+                                      Skenario Suksesi AI
+                                    </button>
+                                  </td>
+                                </motion.tr>
+                              );
+                            })}
+                          </motion.tbody>
+                        </table>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="pension-empty"
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -15 }}
+                        transition={{ duration: 0.3, ease: "easeOut" }}
+                        className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 min-h-[300px]"
+                      >
+                        <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-4 border border-slate-200">
+                          <Inbox className="w-6 h-6 text-slate-400" />
+                        </div>
+                        <h4 className="text-xs font-black text-slate-800 font-display">Data Pensiun Tidak Ditemukan</h4>
+                        <p className="text-[10px] text-slate-400 max-w-[280px] mt-1.5 leading-relaxed">
+                          Tidak ada pegawai yang memenuhi kriteria pensiun di bawah penyaringan atau folder aktif saat ini.
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
 
-              <div className="overflow-x-auto flex-1 flex flex-col justify-start min-h-[350px]">
-                <AnimatePresence mode="wait">
-                  {finalPensionEmployees.length > 0 ? (
-                    <motion.div
-                      key="pension-table"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.25, ease: "easeOut" }}
-                      className="w-full flex-1"
+              {/* CALENDAR VIEW CARD */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs xl:col-span-4 flex flex-col gap-4">
+                <div className="flex flex-col gap-1 pb-3 border-b border-slate-100">
+                  <span className="text-xs font-extrabold text-slate-800 flex items-center gap-2">
+                    <CalendarClock className="w-4 h-4 text-pink-500" />
+                    Monitoring Hari Lahir &amp; TMT Kerja
+                  </span>
+                  <p className="text-[10px] text-slate-400">Kalender interaktif ulang tahun &amp; masa kerja pegawai</p>
+                </div>
+
+                {/* Calendar Navigation and Month selection */}
+                <div className="flex items-center justify-between gap-2.5">
+                  <button
+                    onClick={() => {
+                      if (calendarMonth === 0) {
+                        setCalendarMonth(11);
+                        setCalendarYear(prev => prev - 1);
+                      } else {
+                        setCalendarMonth(prev => prev - 1);
+                      }
+                      setSelectedCalendarDay(null);
+                    }}
+                    className="p-1 px-1.5 hover:bg-slate-100 border border-slate-100 rounded-lg text-slate-500 transition cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={calendarMonth}
+                      onChange={(e) => {
+                        setCalendarMonth(parseInt(e.target.value, 10));
+                        setSelectedCalendarDay(null);
+                      }}
+                      className="bg-transparent border-0 font-bold text-xs text-slate-800 pr-1 py-1 focus:ring-0 cursor-pointer text-center outline-hidden"
                     >
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">
-                            <th className="py-3 px-3">Pegawai</th>
-                            <th className="py-3 px-2">Jabatan Terakhir</th>
-                            <th className="py-3 px-2">Kategori Pensiun</th>
-                            <th className="py-3 px-2 text-center">Usia Saat Ini</th>
-                            <th className="py-3 px-2 text-center">BUP (Batas Usia)</th>
-                            <th className="py-3 px-2 text-center">Masa Kerja Tersisa</th>
-                            <th className="py-3 px-3 text-right">Aksi Suksesi</th>
-                          </tr>
-                        </thead>
-                        <motion.tbody 
-                          className="divide-y divide-slate-50"
-                          variants={{
-                            hidden: { opacity: 0 },
-                            show: {
-                              opacity: 1,
-                              transition: {
-                                staggerChildren: 0.05
-                              }
+                      {['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'].map((m, idx) => (
+                        <option key={m} value={idx}>{m}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={calendarYear}
+                      onChange={(e) => {
+                        setCalendarYear(parseInt(e.target.value, 10));
+                        setSelectedCalendarDay(null);
+                      }}
+                      className="bg-transparent border-0 font-bold text-xs text-slate-800 py-1 focus:ring-0 cursor-pointer text-center outline-hidden"
+                    >
+                      {Array.from({ length: 31 }, (_, i) => 2015 + i).map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (calendarMonth === 11) {
+                        setCalendarMonth(0);
+                        setCalendarYear(prev => prev + 1);
+                      } else {
+                        setCalendarMonth(prev => prev + 1);
+                      }
+                      setSelectedCalendarDay(null);
+                    }}
+                    className="p-1 px-1.5 hover:bg-slate-100 border border-slate-100 rounded-lg text-slate-500 transition cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Legend */}
+                <div className="flex items-center gap-4 text-[9px] font-extrabold justify-center text-slate-500 py-1 border-y border-slate-50/60 bg-slate-50/40 rounded-lg select-none">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-pink-500"></span>
+                    <span>Ulang Tahun (🎂)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+                    <span>TMT Kerja/CPNS (💼)</span>
+                  </div>
+                </div>
+
+                {/* Calendar Days of Week Header */}
+                <div className="grid grid-cols-7 gap-1 text-[9.5px] font-extrabold text-slate-400 text-center select-none pt-1">
+                  {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(dayName => (
+                    <div key={dayName} className={dayName === 'Min' ? 'text-rose-500' : ''}>
+                      {dayName}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Grid container helper */}
+                <div className="grid grid-cols-7 gap-1">
+                  {(() => {
+                    const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
+                    const totalDays = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+                    const prevTotalDays = new Date(calendarYear, calendarMonth, 0).getDate();
+                    
+                    const daysGrid = [];
+                    // Previous month pad
+                    for (let i = firstDayIndex - 1; i >= 0; i--) {
+                      daysGrid.push({
+                        day: prevTotalDays - i,
+                        isCurrentMonth: false,
+                        month: calendarMonth === 0 ? 11 : calendarMonth - 1,
+                        year: calendarMonth === 0 ? calendarYear - 1 : calendarYear,
+                      });
+                    }
+                    // Current month
+                    for (let i = 1; i <= totalDays; i++) {
+                      daysGrid.push({
+                        day: i,
+                        isCurrentMonth: true,
+                        month: calendarMonth,
+                        year: calendarYear,
+                      });
+                    }
+                    // Next month pad
+                    const remaining = 42 - daysGrid.length;
+                    for (let i = 1; i <= remaining; i++) {
+                      daysGrid.push({
+                        day: i,
+                        isCurrentMonth: false,
+                        month: calendarMonth === 11 ? 0 : calendarMonth + 1,
+                        year: calendarMonth === 11 ? calendarYear + 1 : calendarYear,
+                      });
+                    }
+
+                    return daysGrid.map((item, idx) => {
+                      const dayBirthdays = employees.filter(emp => {
+                        const parts = parseDateParts(emp.tanggalLahir);
+                        return parts && parts.day === item.day && parts.month === item.month;
+                      });
+
+                      const dayTmts = employees.filter(emp => {
+                        const parts = parseDateParts(emp.tmtCpns);
+                        return parts && parts.day === item.day && parts.month === item.month;
+                      });
+
+                      const hasBirthday = dayBirthdays.length > 0;
+                      const hasTmt = dayTmts.length > 0;
+                      const isSelected = selectedCalendarDay === item.day && item.isCurrentMonth;
+                      
+                      const isToday = new Date().getDate() === item.day && 
+                                      new Date().getMonth() === item.month && 
+                                      new Date().getFullYear() === item.year;
+
+                      return (
+                        <button
+                          key={idx}
+                          role="gridcell"
+                          onClick={() => {
+                            if (item.isCurrentMonth) {
+                              setSelectedCalendarDay(item.day);
+                            } else {
+                              setCalendarMonth(item.month);
+                              setCalendarYear(item.year);
+                              setSelectedCalendarDay(item.day);
                             }
                           }}
-                          initial="hidden"
-                          animate="show"
+                          className={`h-8.5 rounded-lg flex flex-col justify-between p-1 transition relative cursor-pointer group hover:bg-slate-100 ${
+                            !item.isCurrentMonth ? 'text-slate-350 opacity-40' : 'text-slate-800'
+                          } ${isSelected ? 'bg-blue-600 text-white font-extrabold shadow-sm scale-105 border border-blue-500/50' : 'hover:bg-slate-50 border border-transparent'} ${
+                            isToday && !isSelected ? 'ring-1.5 ring-slate-900 border border-slate-900 bg-slate-50/50' : ''
+                          }`}
                         >
-                          {finalPensionEmployees.slice(0, 15).map((emp) => {
-                            const isCritical = emp.yearsToRetire <= 3;
-                            return (
-                              <motion.tr 
-                                key={emp.id} 
-                                onClick={() => setSelectedEmpId(emp.id)}
-                                variants={{
-                                  hidden: { opacity: 0, y: 15 },
-                                  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } }
-                                }}
-                                className={`cursor-pointer hover:bg-slate-100/75 hover:-translate-y-[2px] hover:shadow-xs transition-all duration-300 transform-gpu ${
-                                  selectedEmpId === emp.id ? 'bg-blue-50/70 border-l-4 border-l-blue-600' : isCritical ? 'bg-amber-50/20' : ''
-                                }`}
-                              >
-                                <td className="py-4 px-3">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-slate-150 text-slate-650 flex items-center justify-center font-extrabold font-display border border-slate-200 shrink-0">
-                                      {emp.nama.replace('dr.', '').replace('Ns.', '').slice(0, 2).trim().toUpperCase()}
-                                    </div>
-                                    <div>
-                                      <p className="font-bold text-slate-800 leading-tight">{emp.nama}</p>
-                                      <p className="text-[10px] font-mono text-slate-450 mt-0.5">
-                                        {emp.jenisKepegawaian === 'BLUD' ? 'NRPTT' : 'NIP'}: {emp.nip}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="py-4 px-2">
-                                  <p className="font-semibold text-slate-700 leading-snug">{emp.jabatanTerakhir}</p>
-                                  <p className="text-[9px] text-slate-400 capitalize">{emp.unitRuangan}</p>
-                                </td>
-                                <td className="py-4 px-2">
-                                  <span className="text-xs font-semibold text-slate-600">
-                                    {emp.nama.toLowerCase().includes('dr.') ? 'Ahli Utama Medis' : emp.nama.toLowerCase().includes('ns.') ? 'Perawat Ahli' : 'Staf Administrasi'}
-                                  </span>
-                                </td>
-                                <td className="py-4 px-2 text-center">
-                                  <span className="font-bold font-mono text-slate-800">{emp.usiaTahun} Th</span>
-                                </td>
-                                <td className="py-4 px-2 text-center">
-                                  <span className="font-bold font-mono text-blue-600">{emp.retirementAge} Th</span>
-                                </td>
-                                <td className="py-4 px-2 text-center">
-                                  {emp.yearsToRetire <= 0 ? (
-                                    <span className="bg-rose-50 border border-rose-200 text-rose-700 font-extrabold px-3 py-1 rounded-full text-[10px]">
-                                      Lewat BUP ({Math.abs(emp.yearsToRetire)} Th LALU)
-                                    </span>
-                                  ) : emp.yearsToRetire <= 3 ? (
-                                    <span className="bg-amber-100 border border-amber-300 text-amber-800 font-black px-3 py-1 rounded-full text-[10px] animate-pulse">
-                                      Kritis ({emp.yearsToRetire} Th Tersisa)
-                                    </span>
-                                  ) : (
-                                    <span className="bg-slate-100 border border-slate-200 text-slate-700 font-bold px-3 py-1 rounded-full text-[10px]">
-                                      Aman ({emp.yearsToRetire} Th Lagi)
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="py-4 px-3 text-right">
-                                  <button
-                                    onClick={() => {
-                                      const q = `Tolong berikan rekomendasi suksesi dan pelatihan/mutasi khusus untuk ${emp.nama} (${emp.jabatanTerakhir}) yang akan pensiun dalam ${emp.yearsToRetire} tahun, kualifikasi pangkatnya ${emp.pangkat}`;
-                                      setActiveTab('consultant');
-                                      setAiQuery(q);
-                                    }}
-                                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 font-bold text-[10px] rounded-lg transition-all"
-                                  >
-                                    Skenario Suksesi AI
-                                  </button>
-                                </td>
-                              </motion.tr>
-                            );
-                          })}
-                        </motion.tbody>
-                      </table>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="pension-empty"
-                      initial={{ opacity: 0, y: 15 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -15 }}
-                      transition={{ duration: 0.3, ease: "easeOut" }}
-                      className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 min-h-[300px]"
-                    >
-                      <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-4 border border-slate-200">
-                        <Inbox className="w-6 h-6 text-slate-400" />
-                      </div>
-                      <h4 className="text-xs font-black text-slate-800 font-display">Data Pensiun Tidak Ditemukan</h4>
-                      <p className="text-[10px] text-slate-400 max-w-[280px] mt-1.5 leading-relaxed">
-                        Tidak ada pegawai yang memenuhi kriteria pensiun di bawah penyaringan atau folder aktif saat ini.
-                      </p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                          <span className={`text-[10px] self-start leading-none font-semibold ${isSelected ? 'text-white' : ''}`}>
+                            {item.day}
+                          </span>
+                          
+                          {/* Mini event indicators */}
+                          <div className="flex gap-0.5 justify-center w-full mt-0.5 min-h-[4px]">
+                            {hasBirthday && (
+                              <span className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-pink-500 group-hover:scale-130 transition-transform'}`}></span>
+                            )}
+                            {hasTmt && (
+                              <span className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-teal-500 group-hover:scale-130 transition-transform'}`}></span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+
+                {/* EVENTS LIST SELECTION / OVERVIEW UNDER KALENDER */}
+                <div className="mt-2.5 pt-3.5 border-t border-slate-100 flex-1 flex flex-col gap-2 min-h-[160px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                      {selectedCalendarDay 
+                        ? `Detail Tanggal ${selectedCalendarDay} ${['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'][calendarMonth]}`
+                        : `Acara Bulan ${['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'][calendarMonth]}`
+                      }
+                    </span>
+                    {selectedCalendarDay && (
+                      <button
+                        onClick={() => setSelectedCalendarDay(null)}
+                        className="text-[9px] font-extrabold text-blue-600 hover:text-blue-800 transition cursor-pointer"
+                      >
+                        Lihat Bulanan
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 max-h-[190px] overflow-y-auto pr-1">
+                    {(() => {
+                      const renderEventsList = (filterDay: number | null) => {
+                        let matches: { emp: Employee; type: 'BIRTHDAY' | 'TMT'; value: number; originalDate: string }[] = [];
+
+                        employees.forEach(emp => {
+                          const birth = parseDateParts(emp.tanggalLahir);
+                          if (birth && birth.month === calendarMonth) {
+                            if (filterDay === null || birth.day === filterDay) {
+                              const ageInSelectedYear = calendarYear - birth.year;
+                              matches.push({ emp, type: 'BIRTHDAY', value: ageInSelectedYear, originalDate: emp.tanggalLahir });
+                            }
+                          }
+
+                          const tmt = parseDateParts(emp.tmtCpns);
+                          if (tmt && tmt.month === calendarMonth) {
+                            if (filterDay === null || tmt.day === filterDay) {
+                              const tenureInSelectedYear = calendarYear - tmt.year;
+                              matches.push({ emp, type: 'TMT', value: tenureInSelectedYear, originalDate: emp.tmtCpns });
+                            }
+                          }
+                        });
+
+                        // Sort by day, then by name
+                        matches.sort((a, b) => {
+                          const dayA = parseDateParts(a.originalDate)?.day || 0;
+                          const dayB = parseDateParts(b.originalDate)?.day || 0;
+                          if (dayA !== dayB) return dayA - dayB;
+                          return a.emp.nama.localeCompare(b.emp.nama);
+                        });
+
+                        if (matches.length === 0) {
+                          return (
+                            <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-50/40 rounded-xl border border-dashed border-slate-150 py-8">
+                              <span className="text-sm">📅</span>
+                              <p className="text-xs text-slate-705 font-bold mt-1">Tidak Ada Acara</p>
+                              <p className="text-[10px] text-slate-400 max-w-[200px] mt-0.5 leading-relaxed">
+                                {filterDay 
+                                  ? "Tidak ada fungsional ulang tahun atau TMT CPNS di tanggal terpilih." 
+                                  : "Tidak ada event ulang tahun atau TMT pegawai di bulan ini."
+                                }
+                              </p>
+                            </div>
+                          );
+                        }
+
+                        return matches.map((item, mIdx) => {
+                          const eventDay = parseDateParts(item.originalDate)?.day || 0;
+                          return (
+                            <div
+                              key={mIdx}
+                              onClick={() => setSelectedEmpId(item.emp.id)}
+                              className={`flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer hover:translate-x-1 duration-200 ${
+                                selectedEmpId === item.emp.id 
+                                  ? 'bg-blue-50/60 border-blue-200' 
+                                  : 'bg-slate-50/45 hover:bg-slate-100/50 border-slate-100'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-bold text-[10.5px] text-slate-400 bg-white/95 px-1.5 py-0.5 rounded-md border border-slate-150 shrink-0 font-mono select-none w-7 text-center">
+                                  {eventDay}
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="font-bold text-[11px] text-slate-800 truncate" title={item.emp.nama}>
+                                    {item.emp.nama}
+                                  </p>
+                                  <p className="text-[9.5px] text-slate-400 font-medium truncate" title={`${item.emp.jabatanTerakhir} - ${item.emp.unitRuangan}`}>
+                                    {item.emp.jabatanTerakhir} ({item.emp.unitRuangan})
+                                  </p>
+                                </div>
+                              </div>
+
+                              {item.type === 'BIRTHDAY' ? (
+                                <span className="text-[9.5px] font-extrabold text-pink-700 bg-pink-50 border border-pink-100 px-2 py-0.5 rounded-full select-none shrink-0 flex items-center gap-1">
+                                  🎂 Ultah {item.value} Th
+                                </span>
+                              ) : (
+                                <span className="text-[9.5px] font-extrabold text-teal-700 bg-teal-50 border border-teal-100 px-2 py-0.5 rounded-full select-none shrink-0 flex items-center gap-1">
+                                  💼 TMT {item.value} Th
+                                </span>
+                              )}
+                            </div>
+                          );
+                        });
+                      };
+
+                      return renderEventsList(selectedCalendarDay);
+                    })()}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -2636,19 +3679,36 @@ export default function App() {
 
             {/* PRINT COMPONENT PREVIEW */}
             {selectedEmployee && (
-              <div className="flex-1 flex items-center justify-center p-6 bg-slate-100 rounded-2xl border border-dashed border-slate-300">
+              <div className="flex-1 flex items-center justify-center p-6 bg-slate-100 rounded-2xl border border-dashed border-slate-300" style={{ perspective: "1000px" }}>
                 {/* Visual badge card */}
-                <div id="badge-id-card-view" className="print-card w-80 bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 flex flex-col relative">
+                <motion.div 
+                  id="badge-id-card-view" 
+                  className="print-card w-80 bg-white rounded-3xl shadow-[0_20px_35px_-10px_rgba(59,130,246,0.18),0_10px_20px_-12px_rgba(59,130,246,0.12)] overflow-hidden border border-slate-200/80 flex flex-col relative group cursor-pointer transition-shadow duration-300 hover:shadow-[0_30px_50px_-15px_rgba(59,130,246,0.3),0_15px_25px_-18px_rgba(59,130,246,0.2)]"
+                  style={{ 
+                    rotateX: idCardRotateX, 
+                    rotateY: idCardRotateY, 
+                    transformStyle: 'preserve-3d' 
+                  }}
+                  onMouseMove={handleIdCardMouseMove}
+                  onMouseLeave={handleIdCardMouseLeave}
+                  whileHover={{ scale: 1.04, translateY: -4 }}
+                  transition={{ type: 'spring', stiffness: 120, damping: 18 }}
+                >
+                  {/* Glass glare shimmer reflection overlay */}
+                  <motion.div 
+                    className="absolute inset-0 pointer-events-none z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                    style={{ background: idCardGlareBg }}
+                  />
                   
                   {/* Top Header card */}
-                  <div className="bg-gradient-to-r from-blue-700 to-indigo-800 p-5 text-white text-center pb-8 sticky top-0">
+                  <div className="bg-gradient-to-r from-blue-700 to-indigo-800 p-5 text-white text-center pb-8 sticky top-0" style={{ transform: 'translateZ(10px)', transformStyle: 'preserve-3d' }}>
                     <p className="text-[10px] font-extrabold uppercase tracking-widest leading-none text-blue-100">KARTU IDENTITAS KELUARGA</p>
                     <h3 className="text-base font-extrabold tracking-tight mt-1 font-display leading-tight">RSUD DR. H. JUSUF SK</h3>
                     <p className="text-[8px] text-blue-200 mt-1">Provinsi Kalimantan Utara</p>
                   </div>
 
                   {/* Photo Space overlapping */}
-                  <div className="flex flex-col items-center -mt-6 z-10 px-6">
+                  <div className="flex flex-col items-center -mt-6 z-10 px-6" style={{ transform: 'translateZ(25px)', transformStyle: 'preserve-3d' }}>
                     <div className="w-24 h-24 bg-white rounded-2xl shadow-md p-1.5 border border-slate-100 flex items-center justify-center">
                       <div className="w-full h-full bg-slate-900 rounded-xl text-blue-400 font-black flex items-center justify-center text-4xl uppercase">
                         {selectedEmployee.nama.replace('dr.', '').replace('Ns.', '').slice(0, 2).trim().toUpperCase()}
@@ -2668,7 +3728,7 @@ export default function App() {
                   </div>
 
                   {/* Detail listing fields */}
-                  <div className="p-5 flex flex-col gap-2 mt-4 text-[10px] text-slate-600 font-semibold border-t border-slate-100 bg-slate-50">
+                  <div className="p-5 flex flex-col gap-2 mt-4 text-[10px] text-slate-600 font-semibold border-t border-slate-100 bg-slate-50" style={{ transform: 'translateZ(15px)' }}>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Grup Bidang:</span>
                       <strong className="text-slate-800">{selectedEmployee.bidang}</strong>
@@ -2684,7 +3744,7 @@ export default function App() {
                   </div>
 
                   {/* Bottom Footer block bar code sim */}
-                  <div className="bg-slate-900 py-3.5 px-6 flex justify-between items-center text-[8px] font-mono text-slate-500 text-center uppercase tracking-widest border-t border-slate-800">
+                  <div className="bg-slate-900 py-3.5 px-6 flex justify-between items-center text-[8px] font-mono text-slate-500 text-center uppercase tracking-widest border-t border-slate-800" style={{ transform: 'translateZ(8px)' }}>
                     <div>
                       <span>STATUS: {selectedEmployee.statusKepegawaian} | TIPE: {selectedEmployee.jenisKepegawaian || 'PNS'}</span>
                     </div>
@@ -2698,117 +3758,275 @@ export default function App() {
                       <span className="w-[2px] h-3 bg-black"></span>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               </div>
             )}
           </div>
         )}
-
-        {/* TAB 5: AI CONSULTANT (KONSULTAN AI SINERGI) */}
+             {/* TAB 5: ANALITIK SDM & ASISTEN SURAT (REPLACED CONSULTANT VIEW) */}
         {activeTab === 'consultant' && (
           <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden">
             
-            {/* CONTEXT SENDER SCREEN */}
-            <div className="w-full lg:w-80 bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col gap-4">
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-800">Asisten AI Kepegawaian</h3>
-                <p className="text-xs text-slate-400">Gemini 3.5-flash berbasis konteks roster RSUD.</p>
-              </div>
+            {/* LEFT CONTROL PANEL */}
+            <div className="w-full lg:w-[380px] shrink-0 flex flex-col gap-5 overflow-y-auto pr-1">
+              
+              {/* CARD 1: ANALITIK SDM */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col gap-4">
+                <div>
+                  <div className="flex items-center gap-1.5 text-blue-600">
+                    <BrainCircuit className="w-4.5 h-4.5" />
+                    <h3 className="text-sm font-extrabold text-slate-800">Analitik SDM Otomatis</h3>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                    Satu klik untuk memantau indikator, rasio, dan tren kepegawaian RSUD secara dinamis menggunakan Gemini.
+                  </p>
+                </div>
 
-              {/* Status context info */}
-              <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-100 text-xs text-emerald-800 flex flex-col gap-1.5">
-                <span className="font-bold flex items-center gap-1.5">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  Konteks Data Sinkron!
-                </span>
-                <p className="text-[10px] text-emerald-700 leading-snug">
-                  Sebanyak <strong>{employees.length} pegawai</strong> aktif, golongan pangkat, dan batas usia pensiun terbaru dimasukkan ke dalam konteks konsultasi secara dinamis.
-                </p>
-              </div>
-
-              {/* Suggested Questions */}
-              <div className="flex flex-col gap-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Rekomendasi Pertanyaan:</p>
-                {suggestedPrompts.map((p, idx) => (
+                <div className="flex flex-col gap-2">
                   <button
-                    key={idx}
-                    onClick={() => handleAIConsultation(p)}
-                    className="w-full p-2.5 border border-slate-100 hover:border-blue-200 hover:bg-blue-50/20 transition text-left text-[10px] font-semibold text-slate-650 rounded-xl leading-snug"
+                    onClick={handleAnalyzeNursePatientRatio}
+                    disabled={aiLoading}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 hover:border-blue-300 hover:bg-blue-50/20 active:scale-[0.98] transition-all text-left rounded-xl flex items-start gap-2.5 disabled:opacity-50"
                   >
-                    {p}
+                    <Activity className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-[11px] font-bold text-slate-700">Buat Laporan Rasio Perawat vs Pasien</h4>
+                      <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">Evaluasi kecukupan & analisis beban kerja perawat per ruangan.</p>
+                    </div>
                   </button>
-                ))}
+
+                  <button
+                    onClick={handleShowRetirementProjection5Years}
+                    disabled={aiLoading}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 hover:border-blue-300 hover:bg-blue-50/20 active:scale-[0.98] transition-all text-left rounded-xl flex items-start gap-2.5 disabled:opacity-50"
+                  >
+                    <CalendarClock className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-[11px] font-bold text-slate-700">Tampilkan Grafik Pensiun 5 Tahun</h4>
+                      <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">Deteksi dini masa pensiun kritis berdasarkan rumpun medis & non-medis.</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={handleDetectShiftDisparities}
+                    disabled={aiLoading}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 hover:border-blue-300 hover:bg-blue-50/20 active:scale-[0.98] transition-all text-left rounded-xl flex items-start gap-2.5 disabled:opacity-50"
+                  >
+                    <Sliders className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-[11px] font-bold text-slate-700">Deteksi Ketimpangan Jadwal Shift</h4>
+                      <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">Audit disparitas sebaran tenaga fungsional & jam siaga pelayanan.</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* CARD 2: ASISTEN PEMBUAT SURAT */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col gap-4">
+                <div>
+                  <div className="flex items-center gap-1.5 text-blue-600">
+                    <FileText className="w-4.5 h-4.5" />
+                    <h3 className="text-sm font-extrabold text-slate-800">Asisten Pembuat Surat</h3>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                    Auto-generate draf SK, Surat Tugas, atau Surat Peringatan langsung berdasar data pegawai sesungguhnya.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  {/* Dropdown Employee selection */}
+                  <div>
+                    <label className="block text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">Pilih Pegawai Terkait:</label>
+                    <select
+                      value={selectedLetterEmpId}
+                      onChange={(e) => setSelectedLetterEmpId(e.target.value)}
+                      className="w-full text-[11px] font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-blue-400 text-slate-800"
+                    >
+                      <option value="">-- Hubungkan profil staf --</option>
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.nama} ({emp.nip || 'Non-NIP'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Jenis Surat */}
+                  <div>
+                    <label className="block text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">Jenis Dokumen Resmi:</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: 'SK', label: 'SK Direktur' },
+                        { id: 'Tugas', label: 'Surat Tugas' },
+                        { id: 'Peringatan', label: 'Surat Peringatan' }
+                      ].map(t => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setLetterType(t.id as any)}
+                          className={`py-2 px-3 border rounded-xl text-[10.5px] font-extrabold text-center transition-all ${
+                            letterType === t.id 
+                              ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-3xs' 
+                              : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Keterangan / substansi tambahan */}
+                  <div>
+                    <label className="block text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">Substansi / Catatan Tambahan (Opsional):</label>
+                    <textarea
+                      rows={2}
+                      value={letterContext}
+                      onChange={(e) => setLetterContext(e.target.value)}
+                      placeholder="Contoh: Dipindahkan ke unit ICU per tanggal 1 Juli / Mengikuti workshop manajemen limbah klinis"
+                      className="w-full text-[11px] font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-blue-400 text-slate-800 placeholder:text-slate-400 resize-none leading-relaxed"
+                    />
+                  </div>
+
+                  {/* Generate Trigger */}
+                  <button
+                    onClick={handleGenerateLetter}
+                    disabled={aiLoading || !selectedLetterEmpId}
+                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-all text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 mt-1"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Generate Surat Dinas AI</span>
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* MAIN AI RESPONSE FIELD */}
+            {/* RIGHT PANEL: OUTPUT PREVIEW AND DRAFT VIEW */}
             <div className="flex-1 bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col justify-between overflow-hidden">
-              <div className="flex flex-col gap-4 flex-1 overflow-y-auto pr-2 pb-4">
+              <div className="flex flex-col gap-4 flex-1 overflow-y-auto pr-1 pb-4">
                 
-                {/* Introduction header */}
+                {/* Visual Header */}
                 <div className="flex justify-between items-center pb-3 border-b border-slate-100 shrink-0">
                   <span className="text-xs font-extrabold text-slate-850 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-blue-500" />
-                    SI-RSUD AI Consultant Panel
+                    <Sparkles className="w-4 h-4 text-blue-500 animate-pulse" />
+                    SI-RSUD Laporan & Draf Surat Cerdas
                   </span>
-                  <span className="text-[10px] font-bold text-slate-400">Secanggih Mungkin</span>
+                  
+                  {/* Actions on response draft */}
+                  {aiResponse && !aiLoading && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleCopyToClipboard(aiResponse)}
+                        className="p-1 px-2 border border-slate-200 hover:border-slate-350 bg-slate-50 hover:bg-slate-100 text-slate-650 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all animate-fade-in"
+                        title="Salin ke Clipboard"
+                      >
+                        {isCopied ? <CheckCircle className="w-3.5 h-3.5 text-emerald-600 animate-zoom-in" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{isCopied ? "Tersalin!" : "Salin Teks"}</span>
+                      </button>
+                      <button
+                        onClick={() => handleDownloadLetterAsTxt(aiResponse)}
+                        className="p-1 px-2 border border-slate-200 hover:border-slate-350 bg-slate-50 hover:bg-slate-100 text-slate-650 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all"
+                        title="Unduh sebagai Berkas .TXT"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Unduh .TXT</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* AI RESPONSE WRAPPER */}
-                <div className="flex-1 flex flex-col justify-center min-h-[350px]">
-                  {aiLoading ? (
-                    <div className="flex flex-col items-center justify-center gap-3 text-center self-center py-12">
+                {/* CENTRAL CONTAINER WITH CONDITIONAL WRAPPERS */}
+                <div className="flex-1 flex flex-col justify-center">
+                  {isAiConfigured === false ? (
+                    <div className="text-center self-center py-6 max-w-sm bg-slate-50 p-6 rounded-2xl border border-slate-200 mx-auto">
+                      <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mx-auto mb-3 border border-blue-100">
+                        <KeyRound className="w-6 h-6 animate-pulse" />
+                      </div>
+                      <h4 className="text-xs font-black text-slate-800">Sinergi AI Belum Dikonfigurasi</h4>
+                      <p className="text-[10.5px] text-slate-500 mt-2 leading-relaxed">
+                        Fitur asisten cerdas SI-RSUD memerlukan <strong>GEMINI_API_KEY</strong> untuk berjalan.
+                      </p>
+                      <div className="text-left mt-4 bg-white p-3.5 rounded-xl border border-slate-200/60 space-y-2 text-[10px] text-slate-600 leading-normal">
+                        <p className="font-extrabold text-slate-700 uppercase tracking-wider text-[8.5px]">Langkah Konfigurasi:</p>
+                        <div className="flex gap-2">
+                          <span className="w-3.5 h-3.5 bg-blue-50 text-blue-700 rounded-full flex items-center justify-center font-bold text-[8.5px] shrink-0">1</span>
+                          <span>Buka menu utama Pengembang AI Studio.</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="w-3.5 h-3.5 bg-blue-50 text-blue-700 rounded-full flex items-center justify-center font-bold text-[8.5px] shrink-0">2</span>
+                          <span>Pilih <strong>Settings &gt; Secrets</strong>.</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="w-3.5 h-3.5 bg-blue-50 text-blue-700 rounded-full flex items-center justify-center font-bold text-[8.5px] shrink-0">3</span>
+                          <span>Tambahkan secret baru bernama <code>GEMINI_API_KEY</code> &amp; simpan key Anda.</span>
+                        </div>
+                      </div>
+                      <p className="text-[9.5px] text-slate-400 mt-3 italic leading-normal text-center">
+                        *Lalu muat ulang halaman ini untuk mengaktifkan asisten cerdas secara otomatis.
+                      </p>
+                    </div>
+                  ) : aiLoading || isAiConfigured === null ? (
+                    <div className="flex flex-col items-center justify-center gap-3 text-center self-center py-12 mx-auto">
                       <RefreshCw className="w-12 h-12 text-blue-500 animate-spin" />
                       <div>
-                        <p className="text-sm font-extrabold text-slate-700">Mempelajari Roster Pegawai RSUD...</p>
-                        <p className="text-xs text-slate-400 mt-1">Gemini 3.5-flash sedang merangkum visualisasi, tren, dan menyusun laporan.</p>
+                        <p className="text-sm font-extrabold text-slate-705">AI Sedang Bekerja...</p>
+                        <p className="text-xs text-slate-400 mt-1">Menyusun proyeksi tren, merumuskan analisis rasio, atau mendraf surat kedinasan formal.</p>
                       </div>
                     </div>
                   ) : aiError ? (
-                    <div className="p-4 bg-rose-50 rounded-xl border border-rose-200 text-rose-800 text-xs self-center flex items-center gap-2 max-w-md">
+                    <div className="p-4 bg-rose-50 rounded-xl border border-rose-200 text-rose-800 text-xs self-center flex items-center gap-2 max-w-md mx-auto">
                       <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
                       <div>
-                        <p className="font-bold">Gagal Menganalisis Data:</p>
+                        <p className="font-bold">Gagal Menyusun Insight:</p>
                         <p className="mt-1 leading-snug text-[10px]">{aiError}</p>
                       </div>
                     </div>
                   ) : aiResponse ? (
-                    <div id="ai-response-container" className="prose text-xs text-slate-700 leading-relaxed font-semibold self-start w-full bg-slate-50 p-6 rounded-2xl border border-slate-100 max-h-[500px] overflow-y-auto">
-                      {/* Standard markdown formatting translated beautifully into rich JSX paragraph blocks */}
-                      <pre className="whitespace-pre-wrap font-sans text-xs">{aiResponse}</pre>
+                    <div className="w-full flex flex-col gap-2.5">
+                      
+                      {/* Printable visual mock paper */}
+                      <div className="w-full bg-white p-6 md:p-8 rounded-2xl border border-slate-200/95 shadow-sm text-xs leading-relaxed text-slate-800 font-mono select-text whitespace-pre-wrap max-h-[460px] overflow-y-auto relative subpixel-antialiased">
+                        {/* Decorative background stripes simulating real letter sheets */}
+                        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-t-2xl"></div>
+                        <span>{aiResponse}</span>
+                      </div>
+                      
+                      <p className="text-[10px] text-slate-400 italic text-center leading-normal">
+                        *Draf di atas siap disalin untuk dipindahkan ke sistem penomoran naskah dinas atau dicetak.
+                      </p>
                     </div>
                   ) : (
-                    <div className="text-center self-center py-12 text-slate-400">
-                      <BrainCircuit className="w-16 h-16 xl:w-20 xl:h-24 mx-auto opacity-20 text-blue-600 animate-pulse" />
-                      <p className="text-sm font-extrabold text-slate-600 mt-3 font-display">Hubungi Konsultan AI</p>
+                    <div className="text-center self-center py-12 text-slate-400 mx-auto">
+                      <BrainCircuit className="w-16 h-16 xl:w-20 xl:h-24 mx-auto opacity-15 text-blue-600 animate-pulse" />
+                      <p className="text-sm font-extrabold text-slate-600 mt-3 font-display">Sistem Siap Digunakan</p>
                       <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
-                        Tanyakan apa pun tentang komposisi pegawai, estimasi pengganti pensiun, atau minta rekomendasi strategi training untuk fungsional tertentu.
+                        Pilih tombol "Analitik Otomatis" untuk melakukan tinjauan mikro, atau isi formulir di kiri untuk mulai merancang draf naskah dinas resmi staf kepegawaian RSUD.
                       </p>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* INPUT MESSAGE PROMPT FILEDS */}
+              {/* INPUT BOX AS BACKWARD FALLBACK */}
               <div className="no-print pt-3 border-t border-slate-100 shrink-0 flex gap-2">
                 <input
                   type="text"
-                  placeholder="Ketik pertanyaan Anda tentang data pegawai RSUD..."
+                  placeholder="Ketik instruksi kustom tambahan atau pertanyaan lain tentang pegawai..."
                   value={aiQuery}
                   onChange={(e) => setAiQuery(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleAIConsultation();
                   }}
                   disabled={aiLoading}
-                  className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 disabled:opacity-50 text-slate-750"
+                  className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-slate-50 disabled:opacity-50 text-slate-750 font-semibold"
                 />
                 <button
                   onClick={() => handleAIConsultation()}
                   disabled={aiLoading || !aiQuery.trim()}
-                  className="px-5 bg-blue-600 hover:bg-blue-700 active:scale-95 transition text-white font-bold text-xs rounded-xl disabled:opacity-50 disabled:scale-100 flex items-center gap-1.5"
+                  className="px-5 bg-blue-600 hover:bg-blue-700 active:scale-95 transition text-white font-extrabold text-xs rounded-xl disabled:opacity-50 disabled:scale-100 flex items-center gap-1.5"
                 >
                   <Sparkles className="w-4 h-4" />
-                  <span>Kirim AI</span>
+                  <span>Kirim</span>
                 </button>
               </div>
             </div>
@@ -3189,6 +4407,17 @@ export default function App() {
                     required
                     value={editEmpState.bidang || ''}
                     onChange={(e) => setEditEmpState(prev => ({ ...prev, bidang: e.target.value }))}
+                    className="w-full bg-slate-55 border border-slate-200 rounded-xl py-2 px-3 focus:outline-teal-500 font-semibold"
+                  />
+                </div>
+
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block font-bold text-slate-500 mb-1">Riwayat Sertifikasi, Pelatihan terakhir / Catatan penting</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Sertifikasi ACLS (2024) / Pelatihan ICU Dasar"
+                    value={editEmpState.keterangan || ''}
+                    onChange={(e) => setEditEmpState(prev => ({ ...prev, keterangan: e.target.value }))}
                     className="w-full bg-slate-55 border border-slate-200 rounded-xl py-2 px-3 focus:outline-teal-500 font-semibold"
                   />
                 </div>
