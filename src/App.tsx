@@ -1321,7 +1321,7 @@ export default function App() {
   }, [activeTab]);
 
   return (
-    <div id="si-rsud" className="h-screen w-screen bg-slate-50 flex overflow-hidden font-sans text-slate-900 select-none antialiased">
+    <div id="si-rsud" className="h-screen w-screen bg-slate-50 flex overflow-hidden font-sans text-slate-900 antialiased">
       {/* Toast Alert */}
       <AnimatePresence>
         {toast && (
@@ -1345,11 +1345,10 @@ export default function App() {
 
       {/* --- NAVIGATION SIDEBAR --- */}
       <aside className="no-print w-56 md:w-[230px] bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800 shrink-0">
-        <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white text-xl">H</div>
+        <div className="px-6 py-5 border-b border-slate-800/60">
           <div>
-            <h1 className="text-white font-bold leading-none tracking-tight">RSUD HUB</h1>
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Management System</p>
+            <h1 className="text-white font-extrabold tracking-tight text-sm md:text-base leading-tight">RSUD dr.H.Jusuf.SK</h1>
+            <p className="text-[9px] text-slate-400 uppercase tracking-widest mt-1.5 font-mono">Management System</p>
           </div>
         </div>
         
@@ -2407,10 +2406,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* RETIREMENTS WRAPPER FLEX CONTAINER */}
-            <div className="flex flex-col xl:flex-row gap-6 items-start w-full">
-              {/* RETIREMENTS LIST GRID */}
-              <div id="card-pension-calculator" className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex-1 flex flex-col w-full">
+            {/* RETIREMENTS LIST GRID */}
+            <div id="card-pension-calculator" className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex-1 flex flex-col">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100 mb-4">
                 <div className="flex flex-col gap-1">
                   <span className="text-xs font-extrabold text-slate-800">Daftar Pegawai Mendekati Masa Pensiun</span>
@@ -2576,103 +2573,8 @@ export default function App() {
                 </AnimatePresence>
               </div>
             </div>
-
-            {/* RETIREE ID CARD VIEW FOR HIGH QUALITY EXPORT AND PRINT */}
-            {selectedEmployee && (
-              <div className="w-full xl:w-85 bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col shrink-0 items-center">
-                <div className="w-full pb-3 border-b border-slate-100 mb-4 flex justify-between items-center">
-                  <div>
-                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight font-display">ID Card Preview</h4>
-                    <p className="text-[9px] text-slate-400 font-semibold truncate max-w-[155px]">{selectedEmployee.nama}</p>
-                  </div>
-                  <span className="text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded font-mono">BUP {selectedEmployee.retirementAge} Th</span>
-                </div>
-
-                <div className="w-full flex justify-center py-2">
-                  {/* The Visual Printable/Exportable ID card */}
-                  <div id="pension-id-card-view" className="print-card w-72 bg-white rounded-3xl shadow-lg overflow-hidden border border-slate-200 flex flex-col select-none relative">
-                    {/* Top Header card */}
-                    <div className="bg-gradient-to-r from-blue-700 to-indigo-850 p-4.5 text-white text-center pb-8">
-                      <p className="text-[9px] font-extrabold uppercase tracking-widest leading-none text-blue-100">KARTU IDENTITAS KELUARGA</p>
-                      <h3 className="text-sm font-extrabold tracking-tight mt-1 font-display leading-tight">RSUD DR. H. JUSUF SK</h3>
-                      <p className="text-[7.5px] text-blue-200 mt-1">Provinsi Kalimantan Utara</p>
-                    </div>
-
-                    {/* Photo Space overlapping */}
-                    <div className="flex flex-col items-center -mt-6 z-10 px-5">
-                      <div className="w-20 h-20 bg-white rounded-2xl shadow-md p-1 border border-slate-100 flex items-center justify-center font-display">
-                        <div className="w-full h-full bg-slate-900 rounded-xl text-blue-400 font-black flex items-center justify-center text-3xl uppercase">
-                          {selectedEmployee.nama.replace('dr.', '').replace('Ns.', '').slice(0, 2).trim().toUpperCase()}
-                        </div>
-                      </div>
-
-                      <h4 className="font-extrabold text-xs text-slate-850 tracking-tight mt-2.5 text-center leading-tight">
-                        {selectedEmployee.nama}
-                      </h4>
-                      <p className="font-mono text-[9px] text-slate-450 mt-1">
-                        {selectedEmployee.jenisKepegawaian === 'BLUD' ? 'NRPTT' : 'NIP'}: {selectedEmployee.nip}
-                      </p>
-                      
-                      <span className="inline-block mt-2 px-2.5 py-0.5 bg-blue-50 border border-blue-200 rounded-full text-[8.5px] font-extrabold text-blue-800 font-display">
-                        {selectedEmployee.jabatanTerakhir}
-                      </span>
-                    </div>
-
-                    {/* Detail fields */}
-                    <div className="p-4 flex flex-col gap-1.5 mt-3 text-[9.5px] text-slate-600 font-semibold border-t border-slate-100 bg-slate-50">
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Grup Bidang:</span>
-                        <strong className="text-slate-800">{selectedEmployee.bidang}</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Unit Penempatan:</span>
-                        <strong className="text-slate-800">{selectedEmployee.unitRuangan}</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Struktur/BUP:</span>
-                        <strong className="text-slate-800">{selectedEmployee.jenisKepegawaian} (BUP {selectedEmployee.retirementAge} Th)</strong>
-                      </div>
-                    </div>
-
-                    {/* Bottom Footer block bar code sim */}
-                    <div className="bg-slate-900 py-2.5 px-4 flex justify-between items-center text-[7.5px] font-mono text-slate-500 text-center uppercase tracking-widest border-t border-slate-800">
-                      <div>
-                        <span>STATUS: {selectedEmployee.statusKepegawaian}</span>
-                      </div>
-                      {/* Fake Barcode */}
-                      <div className="flex gap-[1px] items-center py-0.5 justify-end w-12 shrink-0 bg-white p-0.5 rounded-xs">
-                        <span className="w-[1px] h-2.5 bg-black"></span>
-                        <span className="w-[2px] h-2.5 bg-black"></span>
-                        <span className="w-[1px] h-2.5 bg-black"></span>
-                        <span className="w-[2px] h-2.5 bg-black"></span>
-                        <span className="w-[1px] h-2.5 bg-black"></span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions under the ID card */}
-                <div className="w-full flex flex-col gap-2 mt-4">
-                  <button
-                    onClick={() => exportIdCardToPdf('pension-id-card-view', `ID_Card_Pensiun_${selectedEmployee.nama.replace(/\s+/g, '_')}.pdf`)}
-                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 transition text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Ekspor PDF ID Card</span>
-                  </button>
-                  <button
-                    onClick={() => printIdCard('pension-id-card-view')}
-                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 transition text-slate-700 border border-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Printer className="w-4 h-4 text-slate-500" />
-                    <span>Cetak ID Card</span>
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
-        </div>
-      )}
+        )}
 
         {/* TAB 4: BADGE GENERATOR (CETAK KARTU PEGAWAI) */}
         {activeTab === 'badge' && (
@@ -2736,7 +2638,7 @@ export default function App() {
             {selectedEmployee && (
               <div className="flex-1 flex items-center justify-center p-6 bg-slate-100 rounded-2xl border border-dashed border-slate-300">
                 {/* Visual badge card */}
-                <div id="badge-id-card-view" className="print-card w-80 bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 flex flex-col select-none relative">
+                <div id="badge-id-card-view" className="print-card w-80 bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 flex flex-col relative">
                   
                   {/* Top Header card */}
                   <div className="bg-gradient-to-r from-blue-700 to-indigo-800 p-5 text-white text-center pb-8 sticky top-0">
